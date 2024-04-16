@@ -19,7 +19,6 @@ class ElectricVehicleAStar(AStar):
         super().__init__(heuristic, view, w)
         self.battery_capacity = battery_capacity
         
-
     def solve(self, problem):
         reached = set()
         frontier = PriorityQueue()
@@ -35,7 +34,7 @@ class ElectricVehicleAStar(AStar):
                 new_battery = n.battery - cost  # Assume cost is also the battery consumption
                 if new_battery > 0:  # Ensure the battery doesn't run out
                     # Controlla se il nodo corrente è una stazione di ricarica
-                    if problem.is_charging_station(n.state):  # Modifica qui
+                    if problem.is_charging_station(n.state):
                         new_battery = self.battery_capacity  # Recharge the battery
                     new_state = (s, new_battery)
                     if new_state not in reached:

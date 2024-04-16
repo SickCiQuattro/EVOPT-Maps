@@ -1,13 +1,7 @@
 import pygame
 from path_finding import PathFinding
 from ASTAR import AStar as ASTARPathFinder
-from ASTARW4 import AStarW4 as ASTARPathFinder
-from DFS import DFS as DFSPathFinder
-from BRFS import BrFS as BRFSPathFinder
-from UCS import UCS as UCSPathFinder
-from IDASTAR import IDAStar as IDASTARPathFinding
 from ElectricVehicle import ElectricVehicleAStar as ev
-
 import heuristics
 
 WIDTH = 1000
@@ -26,8 +20,6 @@ ORANGE = (255, 165, 0)
 GREY = (128, 128, 128)
 TURQUOISE = (64, 224, 208)
 CHARGING_STATION_COLOR = (0, 0, 255)  # Blu
-
-
 
 class Spot:
     def __init__(self, row, col, width):
@@ -138,7 +130,6 @@ def draw_grid(win, rows, width):
         for j in range(rows):
             pygame.draw.line(win, GREY, (j * gap, 0), (j * gap, width))
 
-
 def draw(win, grid, rows, width):
     win.fill(WHITE)
 
@@ -152,7 +143,6 @@ def draw(win, grid, rows, width):
 
     pygame.display.update()
 
-
 def get_clicked_pos(pos, rows, width):
     gap = width // rows
     y, x = pos
@@ -162,8 +152,7 @@ def get_clicked_pos(pos, rows, width):
 
     return row, col
 
-def mark_spots(start, grid, plan):
-    
+def mark_spots(start, grid, plan):   
     x = start.row
     y = start.col
     for a in plan:
@@ -180,6 +169,7 @@ def mark_spots(start, grid, plan):
 def mark_expanded(exp, grid):
     for e in exp:
         grid[e[0]][e[1]].make_closed()
+
 import json
 def save_to_file(grid, start, end, charging_stations, filename="temp.json"):
     # Creare una lista per le barriere
@@ -261,6 +251,7 @@ import time
 @click.option('-r', '--rows', default = 50, help = "Number of rows/columns in the map")
 @click.option('-s', '--search_algorithm', default = "ev", help = "Search algorithm to be used")
 @click.option('-f', '--filename', default = None, help = "Initialize map with data from file")
+
 def main(width, rows, search_algorithm, filename = None):
     win = WIN
     start = None
@@ -268,20 +259,11 @@ def main(width, rows, search_algorithm, filename = None):
     ROWS = rows
     charging_stations = set()  # Inizializza un insieme per le stazioni di ricarica
 
-    if search_algorithm == 'DFS':
-        search_algorithm = DFSPathFinder(True)
-    elif search_algorithm == 'ASTAR':
+    if search_algorithm == 'ASTAR':
         search_algorithm = ASTARPathFinder(heuristics.manhattan,True)
     elif search_algorithm == 'ev':
         search_algorithm = ev(heuristics.manhattan,True)
-    elif search_algorithm == 'ASTARW4':
-        search_algorithm = ASTARPathFinder(heuristics.manhattan,True, w = 4)
-    elif search_algorithm == 'IDASTAR':
-        search_algorithm = IDASTARPathFinding(heuristics.manhattan,True) #non lo so ancora
-    elif search_algorithm == 'BRFS':
-        search_algorithm = BRFSPathFinder(True)
-    elif search_algorithm == 'UCS':
-        search_algorithm = UCSPathFinder(True)
+    
     if filename is not None:
         grid, start, end, rows, wall = make_grid_from_file(filename,width) 
     else:

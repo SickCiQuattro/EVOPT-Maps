@@ -8,7 +8,7 @@ class AstarNode(Node):
         super().__init__(state, parent, action, g)
         
     def __lt__(self, other):
-        return self.g + self.h < other.g + other.h 
+        return self.g + self.w * self.h < other.g + other.w * other.h 
     
 class AStar(SearchAlgorithm):
     """AStar First Search
@@ -28,7 +28,7 @@ class AStar(SearchAlgorithm):
         reached.add(problem.init)
         self.reset_expanded()
 
-        while frontier:
+        while frontier: #while not frontier.empty():
             n = frontier.get()
             if problem.isGoal(n.state):
                 return self.extract_solution(n)
