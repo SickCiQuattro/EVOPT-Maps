@@ -1,8 +1,10 @@
 import pygame
 from path_finding import PathFinding
 from ASTAR import AStar as ASTARPathFinder
-from ElectricVehicle import ElectricVehicleAStar as ev
+from Search.electric_vehicle import ElectricVehicleAStar as ev
 import heuristics
+
+#DA UTILIZZARE COME SPUNTO PER IMLEMENTARE COSE
 
 WIDTH = 1000
 WIN = pygame.display.set_mode((WIDTH, WIDTH))
