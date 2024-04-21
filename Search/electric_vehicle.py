@@ -1,19 +1,27 @@
 from ASTAR import AStar, AstarNode
 from queue import PriorityQueue
 
-class ElectricVehicleNode(AstarNode): # A* search algorithm modificato per veicoli elettrici
-    def __init__(self, state, parent=None, action=None, g=0, h=0, battery=20):
+TEMPERATURE_EFFECT = 0.1
+
+def temperature_effect(temperature):
+    return max(1 - ((20 - temperature) * TEMPERATURE_EFFECT), 0)
+
+class ElectricVehicleNode(AstarNode):
+    def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100, temperature=20):
         super().__init__(state, parent, action, g, h)
         self.battery = battery
+        self.temperature = temperature
 
     def __lt__(self, other):
         return (self.g + self.h, self.battery) < (other.g + other.h, other.battery)
 
-class ElectricVehicleAStar(AStar): 
-    def __init__(self, graph, heuristic=lambda x, y, g: 0, view=False, battery_capacity=20):
+class ElectricVehicleAStar(AStar):
+    def __init__(self, graph, heuristic, view=False, battery_capacity=100, min_battery=20, temperature=20):
         super().__init__(heuristic, view)
         self.graph = graph
         self.battery_capacity = battery_capacity
+        self.min_battery = min_battery
+        self.temperature = temperature
 
     def solve(self, problem):
         reached = set() # Insieme degli stati raggiunti
@@ -24,12 +32,12 @@ class ElectricVehicleAStar(AStar):
 
         while not frontier.empty(): # Finchè la coda di priorità non è vuota
             n = frontier.get() # Estrae il nodo con priorità più alta
-            if problem.isGoal(n.state): # Se il nodo è lo stato obiettivo
+            if problem.isGoal(n.state, self.battery_capacity): # Se il nodo è lo stato obiettivo
                 return self.extract_solution(n) # Estrae la soluzione
             for action, s, cost in problem.getSuccessors(n.state): # Per ogni azione, stato e costo dei successori dello stato corrente
-                new_battery = n.battery - cost # Calcola la nuova batteria
+                new_battery = (n.battery - cost) * temperature_effect(self.temperature) # Calcola la nuova batteria
                 if new_battery > 0: # Se la batteria è maggiore di 0
-                    if problem.is_charging_station(n.state): # Se lo stato corrente è una stazione di ricarica
+                    if problem.is_charging_station(n.state): # Se il nodo corrente è una stazione di ricarica
                         new_battery = self.battery_capacity # La batteria viene ricaricata
                     new_state = (s, new_battery) # Calcola il nuovo stato
                     if new_state not in reached: # Se il nuovo stato non è stato raggiunto

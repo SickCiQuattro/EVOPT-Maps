@@ -5,6 +5,7 @@ import json
 from path_finding import PathFinding
 from electric_vehicle import ElectricVehicleAStar
 from heuristics import euclidean_distance
+import osmnx as ox
 
 # Inizializza Pygame
 pygame.init()
@@ -70,15 +71,26 @@ def export_graph_to_json(graph, file_name):
 
 
 def main(): # Funzione principale
+    #initial_battery_level = 100  # Imposta il livello iniziale della batteria # DA IMPLEMENTARE
+    max_battery_capacity = 100   # Imposta la capacità massima della batteria
+    min_battery_at_goal = 20     # Imposta la batteria minima di arrivo
+    ambient_temperature = 20     # Imposta la temperatura ambientale
+
     num_nodes = 20
     num_charging_stations = 5
     G = generate_connected_graph(num_nodes, num_charging_stations) # Genera il grafo
     start_node = random.choice(list(G.nodes())) # Scegli un nodo di partenza casuale
     end_node = random.choice(list(G.nodes())) # Scegli un nodo di arrivo casuale
 
+    # # Utilizza OSMnx per ottenere i dati della mappa # DA IMPLEMENTARE
+    # location_point = (37.79, -122.41)  # Esempio: San Francisco
+    # G = ox.graph_from_point(location_point, dist=750, network_type='drive')
+    # G = ox.speed.add_edge_speeds(G)
+    # G = ox.speed.add_edge_travel_times(G)
+
     # Inizializza l'algoritmo di ricerca
-    problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node]['charging_station']])
-    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: euclidean_distance(node_a, node_b, graph), view=True)
+    problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node]['charging_station']], min_battery_at_goal)
+    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: euclidean_distance(node_a, node_b, graph), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_at_goal, temperature=ambient_temperature)
 
     # Ciclo di gioco
     running = True

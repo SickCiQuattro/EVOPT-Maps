@@ -1,8 +1,8 @@
 from search_problem import SearchProblem
 
-class PathFinding(SearchProblem): # Modificato per veicoli elettrici
-    def __init__(self, graph, init, goal, charging_stations): # Inizializza il problema di ricerca
-        super().__init__(init, goal, graph, charging_stations) # Chiama il costruttore della superclasse
+class PathFinding(SearchProblem):
+    def __init__(self, graph, init, goal, charging_stations, min_battery_at_goal):
+        super().__init__(init, goal, graph, charging_stations, min_battery_at_goal)
 
 #tutta sta roba non penso ci servirà ancora ma la lascio qua per sicurezza
 # class PathFinding(SearchProblem):
