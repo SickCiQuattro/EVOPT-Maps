@@ -3,19 +3,19 @@ from queue import PriorityQueue
 
 TEMPERATURE_EFFECT = 0.1
 
-def temperature_effect(temperature):
+def temperature_effect(temperature): # Effetto della temperatura sulla batteria
     return max(1 - ((20 - temperature) * TEMPERATURE_EFFECT), 0)
 
-class ElectricVehicleNode(AstarNode):
+class ElectricVehicleNode(AstarNode): # Nodo per l'algoritmo A* con veicolo elettrico
     def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100, temperature=20):
         super().__init__(state, parent, action, g, h)
         self.battery = battery
         self.temperature = temperature
 
-    def __lt__(self, other):
+    def __lt__(self, other): # Confronta due nodi
         return (self.g + self.h, self.battery) < (other.g + other.h, other.battery)
 
-class ElectricVehicleAStar(AStar):
+class ElectricVehicleAStar(AStar): # A* search algorithm con veicolo elettrico
     def __init__(self, graph, heuristic, view=False, battery_capacity=100, min_battery=20, temperature=20):
         super().__init__(heuristic, view)
         self.graph = graph
@@ -23,7 +23,7 @@ class ElectricVehicleAStar(AStar):
         self.min_battery = min_battery
         self.temperature = temperature
 
-    def solve(self, problem):
+    def solve(self, problem): # Risolve il problema
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità
         frontier.put(ElectricVehicleNode(problem.init, h=self.heuristic(problem.init, problem.goal), battery=self.battery_capacity)) # Inserisce il nodo iniziale

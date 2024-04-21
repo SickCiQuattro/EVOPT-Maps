@@ -6,15 +6,15 @@ from path_finding import PathFinding
 from electric_vehicle import ElectricVehicleAStar
 from heuristics import euclidean_distance
 import osmnx as ox
-
+"""versione 1.0.0 con generazione di grafo casuale e visualizzazione con pygame"""
 # Inizializza Pygame
 pygame.init()
-screen_width, screen_height = 800, 600
+screen_width, screen_height = 800, 600 # Dimensioni della finestra
 screen = pygame.display.set_mode((screen_width, screen_height))
 pygame.display.set_caption('Simulazione Mappa Stradale')
 
 # Genera un grafo connesso con percorsi alternativi
-def generate_connected_graph(num_nodes, num_charging_stations):
+def generate_connected_graph(num_nodes, num_charging_stations): # Genera un grafo connesso
     G = nx.connected_watts_strogatz_graph(num_nodes, k=3, p=0.5)  # decidere valori di k e p
     for node in G.nodes():  # Posizioni casuali
         G.nodes[node]['pos'] = (random.randint(0, screen_width - 10), random.randint(0, screen_height - 10))

@@ -1,12 +1,13 @@
 from search_algorithm import SearchAlgorithm, Node
 from queue import PriorityQueue
+"""A* search algorithm implementation."""
 
-class AstarNode(Node):
-    def __init__(self, state, parent=None, action=None, g=0, h=0):
+class AstarNode(Node): # Nodo per l'algoritmo A*
+    def __init__(self, state, parent=None, action=None, g=0, h=0): # Costruttore
         super().__init__(state, parent, action, g)
         self.h = h
 
-    def __lt__(self, other):
+    def __lt__(self, other): # Confronta due nodi
         return self.g + self.h < other.g + other.h
 
 class AStar(SearchAlgorithm): # A* search algorithm
@@ -14,7 +15,7 @@ class AStar(SearchAlgorithm): # A* search algorithm
         self.heuristic = heuristic
         super().__init__(view)
 
-    def solve(self, problem):
+    def solve(self, problem): # Risolve il problema
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità
         frontier.put(AstarNode(problem.init, h=self.heuristic(problem.init, problem.goal))) # Inserisce il nodo iniziale

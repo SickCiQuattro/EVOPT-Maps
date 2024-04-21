@@ -4,7 +4,8 @@ from ASTAR import AStar as ASTARPathFinder
 from Search.electric_vehicle import ElectricVehicleAStar as ev
 import heuristics
 
-#DA UTILIZZARE COME SPUNTO PER IMLEMENTARE COSE
+#DA UTILIZZARE COME SPUNTO PER IMLEMENTARE COSE 
+#al massimo si usa per click e mettere i punti di partenza e arrivo manualmente
 
 WIDTH = 1000
 WIN = pygame.display.set_mode((WIDTH, WIDTH))
