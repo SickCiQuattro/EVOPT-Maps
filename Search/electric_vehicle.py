@@ -1,21 +1,25 @@
 from ASTAR import AStar, AstarNode
 from queue import PriorityQueue
 
+# Costanti per la simulazione
 TEMPERATURE_EFFECT = 0.1
+CHARGING_RATE = 0.5  # Percentuale di batteria caricata per minuto
 
-def temperature_effect(temperature): # Effetto della temperatura sulla batteria
+def temperature_effect(temperature):
+    """Calcola l'effetto della temperatura sulla batteria."""
     return max(1 - ((20 - temperature) * TEMPERATURE_EFFECT), 0)
 
-class ElectricVehicleNode(AstarNode): # Nodo per l'algoritmo A* con veicolo elettrico
-    def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100, temperature=20):
+class ElectricVehicleNode(AstarNode):
+    def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100, temperature=20, time=0):
         super().__init__(state, parent, action, g, h)
         self.battery = battery
         self.temperature = temperature
+        self.time = time  # Aggiunto il tempo al nodo
 
-    def __lt__(self, other): # Confronta due nodi
+    def __lt__(self, other):
         return (self.g + self.h, self.battery) < (other.g + other.h, other.battery)
 
-class ElectricVehicleAStar(AStar): # A* search algorithm con veicolo elettrico
+class ElectricVehicleAStar(AStar):
     def __init__(self, graph, heuristic, view=False, battery_capacity=100, min_battery=20, temperature=20):
         super().__init__(heuristic, view)
         self.graph = graph
@@ -23,28 +27,40 @@ class ElectricVehicleAStar(AStar): # A* search algorithm con veicolo elettrico
         self.min_battery = min_battery
         self.temperature = temperature
 
-    def solve(self, problem): # Risolve il problema
-        reached = set() # Insieme degli stati raggiunti
-        frontier = PriorityQueue() # Coda di priorità
-        frontier.put(ElectricVehicleNode(problem.init, h=self.heuristic(problem.init, problem.goal), battery=self.battery_capacity)) # Inserisce il nodo iniziale
-        reached.add((problem.init, self.battery_capacity)) # Aggiunge il nodo iniziale all'insieme degli stati raggiunti
-        self.reset_expanded() # Resetta il numero di nodi espansi
+    def solve(self, problem):
+        reached = set()
+        frontier = PriorityQueue()
+        frontier.put(ElectricVehicleNode(problem.init, h=self.heuristic(problem.init, problem.goal), battery=self.battery_capacity))
+        reached.add((problem.init, self.battery_capacity, 0))  # Aggiunto il tempo iniziale
 
-        while not frontier.empty(): # Finchè la coda di priorità non è vuota
-            n = frontier.get() # Estrae il nodo con priorità più alta
-            if problem.isGoal(n.state, self.battery_capacity): # Se il nodo è lo stato obiettivo
-                return self.extract_solution(n) # Estrae la soluzione
-            for action, s, cost in problem.getSuccessors(n.state): # Per ogni azione, stato e costo dei successori dello stato corrente
-                new_battery = (n.battery - cost) * temperature_effect(self.temperature) # Calcola la nuova batteria
-                if new_battery > 0: # Se la batteria è maggiore di 0
-                    if problem.is_charging_station(n.state): # Se il nodo corrente è una stazione di ricarica
-                        new_battery = self.battery_capacity # La batteria viene ricaricata
-                    new_state = (s, new_battery) # Calcola il nuovo stato
-                    if new_state not in reached: # Se il nuovo stato non è stato raggiunto
-                        self.update_expanded(s) # Aggiorna il numero di nodi espansi
-                        reached.add(new_state) # Aggiunge il nuovo stato all'insieme degli stati raggiunti
-                        new_g = n.g + cost # Calcola il nuovo costo
-                        new_h = self.heuristic(s, problem.goal, self.graph) # Calcola la nuova euristica
-                        frontier.put(ElectricVehicleNode(s, n, action, new_g, new_h, new_battery)) # Inserisce il nuovo nodo nella coda di priorità
+        while not frontier.empty():
+            n = frontier.get()
+            if problem.isGoal(n.state, n.battery):
+                return self.extract_solution(n)
+            for action, s, cost in problem.getSuccessors(n.state):
+                travel_time = self.graph.edges[action]['travel_time']  # Tempo di viaggio tra i nodi
+                new_battery = n.battery - cost * temperature_effect(self.temperature)
+                new_time = n.time + travel_time  # Aggiorna il tempo totale di viaggio
+
+                if new_battery > 0:
+                    if problem.is_charging_station(n.state):
+                        # Calcola il tempo di ricarica necessario per raggiungere la capacità massima
+                        charging_time = (self.battery_capacity - new_battery) / CHARGING_RATE
+                        new_time += charging_time  # Aggiorna il tempo totale con il tempo di ricarica
+                        new_battery = self.battery_capacity  # Ricarica la batteria
+
+                    new_state = (s, new_battery, new_time)
+                    if new_state not in reached:
+                        self.update_expanded(s)
+                        reached.add(new_state)
+                        new_g = n.g + cost
+                        new_h = self.heuristic(s, problem.goal, self.graph)
+                        frontier.put(ElectricVehicleNode(s, n, action, new_g, new_h, new_battery, self.temperature, new_time))
+                        print(f"Passing through node: {s}")
+                        print(f"Remaining battery: {new_battery}")
+                        print(f"Total travel time: {new_time}")
+                        if problem.is_charging_station(s):
+                            print(f"Charging at station: {s}")
+                            print(f"Charged battery to: {new_battery}")
 
         return None

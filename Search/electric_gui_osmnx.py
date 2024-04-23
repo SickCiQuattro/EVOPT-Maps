@@ -74,11 +74,12 @@ def draw_solution(graph, solution, screen):
 # Funzione principale
 def main():
     # Impostazioni iniziali
-    max_battery_capacity = 10000   # Imposta la capacità massima della batteria
+    max_battery_capacity = 1000   # Imposta la capacità massima della batteria
     min_battery_at_goal = 20     # Imposta la batteria minima di arrivo
     ambient_temperature = 20     # Imposta la temperatura ambientale
 
     location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
+    #location_point = (37.79, -122.41)  # Esempio: San Francisco
     num_charging_stations = 20 # Numero di stazioni di ricarica
     G = generate_osm_graph(location_point, 750, 'drive', num_charging_stations) # Genera il grafo
     start_node = random.choice(list(G.nodes())) # Scegli un nodo di partenza casuale
@@ -91,12 +92,31 @@ def main():
 
     # Ciclo di gioco
     running = True
+    selected_nodes = []
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
         screen.fill((0, 0, 0))
         draw_graph(G, start_node, end_node, screen)
+
+
+    # while running:
+    #     for event in pygame.event.get():
+    #         if event.type == pygame.QUIT:
+    #             running = False
+    #         elif event.type == pygame.MOUSEBUTTONDOWN:
+    #             # Ottieni la posizione del clic e trova il nodo più vicino
+    #             mouse_pos = pygame.mouse.get_pos()
+    #             selected_node = min(G.nodes, key=lambda n: euclidean_distance(mouse_pos, G.nodes[n]['pos']))
+    #             selected_nodes.append(selected_node)
+    #             if len(selected_nodes) == 2:
+    #                 start_node, end_node = selected_nodes
+    #                 running = False  # Esci dal ciclo dopo aver selezionato i nodi
+
+    #     screen.fill((0, 0, 0))
+    #     draw_graph(G, start_node, end_node, screen)
+    #     pygame.display.flip()
 
         # Aggiorna la visualizzazione per ogni nodo espanso
         solution = astar.solve(problem)
