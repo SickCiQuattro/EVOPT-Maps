@@ -6,17 +6,14 @@ class SearchProblem: # Problema di ricerca generico
         self.charging_stations = charging_stations
         self.min_battery_at_goal = min_battery_at_goal
 
-    def getSuccessors(self, state): # Ritorna i successori di uno stato
-        successors = set() # Insieme dei successori
-        for neighbor in self.graph.neighbors(state): # Per ogni vicino dello stato
+    def getSuccessors(self, state):
+        successors = set()
+        for neighbor, edge_data in self.graph[state].items():
             action = (state, neighbor)
-            # Per MultiGraph, potrebbe essere necessario specificare la chiave per l'arco
-            # Se il grafo non è un MultiGraph, usa il seguente codice:
-            distance = self.graph.edges[state, neighbor].get('length', 1) # Calcola la distanza
-            # Se il grafo è un MultiGraph, usa il seguente codice:
-            # for key in self.graph[state][neighbor]:
-            #     distance = self.graph[state][neighbor][key].get('length', 1)
-            successors.add((action, neighbor, distance))
+            distance = edge_data[list(edge_data.keys())[0]]['length']
+            speed = edge_data[list(edge_data.keys())[0]].get('speed_kph', 50)  # Velocità in km/h
+            energy_consumed = 0.05 * distance * speed
+            successors.add((action, neighbor, energy_consumed))
         return successors
 
     def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo
