@@ -3,7 +3,7 @@ import osmnx as ox
 import random
 from path_finding import PathFinding
 from electric_vehicle import ElectricVehicleAStar
-from heuristics import euclidean_distance
+from heuristics import time_based_heuristic
 """versione 2.0.0 con generazione di grafo da OSM e visualizzazione con pygame"""
 # Inizializza Pygame
 pygame.init()
@@ -16,9 +16,9 @@ def generate_osm_graph(location, dist, network_type, num_charging_stations): # G
     # Scarica i dati della rete stradale da OSM e costruisci un modello MultiDiGraph
     G = ox.graph_from_point(location, dist=dist, network_type=network_type) # Scarica i dati della rete stradale da OSM
     # Aggiungi velocità e tempi di percorrenza agli archi
-    G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi
-    G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi
-    G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi
+    G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
+    G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
+    G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
 
     # Aggiungi stazioni di ricarica casuali se non sono già presenti
     all_nodes = list(G.nodes) # Lista di tutti i nodi
@@ -67,17 +67,17 @@ def main():
     min_battery_at_goal = 20     # Imposta la batteria minima di arrivo in %
     ambient_temperature = 20     # Imposta la temperatura ambientale
 
-    # location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
-    location_point = (37.79, -122.41) # Esempio: San Francisco
-    num_charging_stations = 20 # Numero di stazioni di ricarica
+    location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
+    # location_point = (37.79, -122.41) # Esempio: San Francisco
+    num_charging_stations = 50 # Numero di stazioni di ricarica
     min_battery_percent = max_battery_capacity * min_battery_at_goal / 100 # Batteria minima in percentuale
-    G = generate_osm_graph(location_point, 750, 'drive', num_charging_stations) # Genera il grafo
+    G = generate_osm_graph(location_point, 1000, 'drive', num_charging_stations) # Genera il grafo
     start_node = random.choice(list(G.nodes())) # Scegli un nodo di partenza casuale
     end_node = random.choice(list(G.nodes())) # Scegli un nodo di arrivo casuale
     # Inizializza l'algoritmo di ricerca
     problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node].get('charging_station', False)], min_battery_percent)
     # Inizializza l'algoritmo di ricerca A*
-    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: euclidean_distance(node_a, node_b, graph), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
+    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: time_based_heuristic(node_a, node_b, graph), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
 
     # Ciclo di gioco
     running = True
@@ -92,8 +92,13 @@ def main():
         solution = astar.solve(problem)
         if solution:
             draw_solution(G, solution, screen)
+        else:    
+            print("Percorso non trovato")
+            pygame.quit()
         pygame.display.flip()
     pygame.quit()
+    print("Soluzione:", solution)
+    print("Percorso trovato con", len(solution), "azioni")
     print("Fine simulazione")
 if __name__ == "__main__":
     main()

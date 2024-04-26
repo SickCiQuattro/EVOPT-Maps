@@ -13,6 +13,7 @@ class ElectricVehicleNode(AstarNode):
         return (self.g + self.h + self.charging_time, self.battery) < (other.g + other.h + other.charging_time, other.battery)
 
 class ElectricVehicleAStar(AStar):
+
     def __init__(self, graph, heuristic, view=False, battery_capacity=100, min_battery=20, temperature=20):
         super().__init__(heuristic, view)
         self.graph = graph
@@ -27,18 +28,18 @@ class ElectricVehicleAStar(AStar):
         frontier.put(ElectricVehicleNode(problem.init, h=self.heuristic(problem.init, problem.goal), battery=self.battery_capacity))
         reached.add((problem.init, self.battery_capacity))
         self.reset_expanded()
-
         while not frontier.empty():
             n = frontier.get()
-            if problem.isGoal(n.state, self.battery_capacity):
+            if problem.isGoal(n.state, n.battery):
                 return self.extract_solution(n)
-            for action, s, cost in problem.getSuccessors(n.state):
-                new_battery = n.battery - cost/self.temperature
+            for action, s, cost, time in problem.getSuccessors(n.state):
+                new_battery = n.battery - (cost/self.temperature)
                 if new_battery > 0:
                     charging_time = 0
                     if problem.is_charging_station(n.state):
                         # Decide se ricaricare o meno e di quanto
-                        desired_battery_level = self.calculate_desired_battery_level(n.state, s, problem)
+                        # desired_battery_level = self.calculate_desired_battery_level(n.state, s, problem)
+                        desired_battery_level = 50
                         if desired_battery_level > n.battery:
                             charging_time = (desired_battery_level - n.battery) / self.charging_power
                             new_battery = desired_battery_level
@@ -46,15 +47,16 @@ class ElectricVehicleAStar(AStar):
                     if new_state not in reached:
                         self.update_expanded(s)
                         reached.add(new_state)
-                        new_g = n.g + cost + charging_time
+                        new_g = n.g + time + charging_time
                         new_h = self.heuristic(s, problem.goal, self.graph)
                         frontier.put(ElectricVehicleNode(s, n, action, new_g, new_h, new_battery))
-
+            print("State:", n.state, "Battery:", n.battery, "G:", n.g, "H:", n.h, "Charging Time:", n.charging_time)
         return None
     
     def calculate_desired_battery_level(self, current_state, next_state, problem):
-        # Implementa una logica per determinare il livello di batteria desiderato
-        # Potrebbe basarsi sulla distanza al prossimo punto di ricarica, alla destinazione, o ad altri fattori
-        # Per semplicità, qui impostiamo un valore fisso
-        return 80  # Ad esempio, ricarica fino all'80% della capacità
+        # Imposta un livello di carica desiderato fisso per semplicità
+        desired_battery_level_percentage = 80  # Livello di carica desiderato in percentuale della capacità totale
+        # Calcola il livello di carica desiderato in termini di capacità della batteria
+        desired_battery_level_kwh = (desired_battery_level_percentage / 100) * self.battery_capacity
+        return desired_battery_level_kwh
     

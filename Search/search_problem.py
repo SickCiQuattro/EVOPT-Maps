@@ -12,8 +12,9 @@ class SearchProblem: # Problema di ricerca generico
             action = (state, neighbor)
             distance = edge_data[list(edge_data.keys())[0]]['length']
             speed = edge_data[list(edge_data.keys())[0]].get('speed_kph', 50)  # Velocità in km/h
-            energy_consumed = 0.05 * distance * speed
-            successors.add((action, neighbor, energy_consumed))
+            energy_consumed = 0.05 * (distance / 1000) * speed # k * d(km) * v(km/h) = kWh * °C
+            time = edge_data[list(edge_data.keys())[0]]['travel_time']
+            successors.add((action, neighbor, energy_consumed, time))
         return successors
 
     def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo
