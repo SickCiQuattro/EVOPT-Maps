@@ -23,7 +23,7 @@ def generate_osm_graph(location, dist, network_type, num_charging_stations): # G
     # Aggiungi stazioni di ricarica casuali se non sono già presenti
     all_nodes = list(G.nodes) # Lista di tutti i nodi
     charging_stations = random.sample(all_nodes, num_charging_stations) # Scegli un numero casuale di stazioni di ricarica
-    # G = ox.utils_graph.convert.to_digraph(G, weight="travel_time") # Converte MultiDiGraph in DiGraph
+    G = ox.utils_graph.convert.to_digraph(G, weight="travel_time") # Converte MultiDiGraph in DiGraph
     
     for node in charging_stations: # Imposta le stazioni di ricarica casuali
         G.nodes[node]['charging_station'] = True
@@ -67,8 +67,8 @@ def main():
     min_battery_at_goal = 20     # Imposta la batteria minima di arrivo in %
     ambient_temperature = 20     # Imposta la temperatura ambientale
 
-    location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
-    # location_point = (37.79, -122.41) # Esempio: San Francisco
+    # location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
+    location_point = (37.79, -122.41) # Esempio: San Francisco
     num_charging_stations = 50 # Numero di stazioni di ricarica
     min_battery_percent = max_battery_capacity * min_battery_at_goal / 100 # Batteria minima in percentuale
     G = generate_osm_graph(location_point, 1000, 'drive', num_charging_stations) # Genera il grafo
@@ -77,17 +77,21 @@ def main():
     # Inizializza l'algoritmo di ricerca
     problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node].get('charging_station', False)], min_battery_percent)
     # Inizializza l'algoritmo di ricerca A*
-    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: time_based_heuristic(node_a, node_b, graph), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
+    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: time_based_heuristic(node_a, node_b, G), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
+    # astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: adaptive_heuristic(node_a, node_b, graph, ox.shortest_path(G, node_a, node_b)), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
 
     # Ciclo di gioco
     running = True
+    i=0
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
         screen.fill((0, 0, 0))
         draw_graph(G, start_node, end_node, screen)
-        pygame.display.flip()
+        if i==0:
+            pygame.display.flip()
+            i+=1
 
         # Aggiorna la visualizzazione per ogni nodo espanso
         solution = astar.solve(problem)

@@ -47,6 +47,12 @@ print("Grafo generato con", len(G.nodes()), "nodi e", len(G.edges()), "archi")
 
 #print(G.edges[11779835693, 867256802, 0]['travel_time'])
 
+dis = ox.shortest_path(G, 321625459, 828001274, weight='travel_time', cpus=1)
+print("quanti", len(dis),"eccoli", dis)
+path = ox.k_shortest_paths(G, 321625459, 828001274, k, weight='travel_time')
+for k in path:
+    print("path", k)
+
 def haversine_distance(lat1, lon1, lat2, lon2):
     # Raggio della Terra in km
     R = 6371.0
