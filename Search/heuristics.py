@@ -46,3 +46,23 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return R * c # Distanza in km
+
+def adaptive_heuristic(node_a, node_b, graph, shortest_path):
+    # Stima adattiva del tempo per raggiungere node_b da node_a
+    if graph.has_edge(node_a, node_b):
+        # Calcola il tempo medio di viaggio tra i nodi considerando solo i collegamenti del percorso più breve
+        total_time = 0
+        edge_count = 0
+        for key in shortest_path:
+            if graph.has_edge(key, node_b):
+                total_time += graph[key][node_b][0]['travel_time']
+                edge_count += 1
+        if edge_count > 0:
+            average_time = total_time / edge_count
+            return average_time / 3600  # Converti in ore
+    else:
+        # Se non c'è un collegamento diretto, stima il tempo basandosi su una velocità media
+        average_speed_kph = 50
+        distance_km = euclidean_distance(node_a, node_b, graph)
+        estimated_time_hours = distance_km / average_speed_kph
+        return estimated_time_hours

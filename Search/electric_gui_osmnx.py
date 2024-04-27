@@ -87,6 +87,7 @@ def main():
                 running = False
         screen.fill((0, 0, 0))
         draw_graph(G, start_node, end_node, screen)
+        pygame.display.flip()
 
         # Aggiorna la visualizzazione per ogni nodo espanso
         solution = astar.solve(problem)
@@ -94,7 +95,7 @@ def main():
             draw_solution(G, solution, screen)
         else:    
             print("Percorso non trovato")
-            pygame.quit()
+            break
         pygame.display.flip()
     pygame.quit()
     print("Soluzione:", solution)
