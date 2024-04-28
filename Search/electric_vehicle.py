@@ -26,29 +26,33 @@ class ElectricVehicleAStar(AStar):
         
 
     def solve(self, problem):
-        reached = {}
+        # reached = {}
+        reached = set()
         frontier = PriorityQueue()
         frontier.put(ElectricVehicleNode(problem.init, h=self.heuristic(problem.init, problem.goal), battery=self.battery_capacity))
-        reached[(problem.init, self.battery_capacity)] = 0 # Dizionario degli stati raggiunti
+        # reached[(problem.init, self.battery_capacity)] = 0 # Dizionario degli stati raggiunti
+        reached.add((problem.init, self.battery_capacity))
+
         self.reset_expanded()
         while not frontier.empty():
             n = frontier.get()
             if problem.isGoal(n.state, n.battery):
                 return self.extract_solution(n)
             for action, s, cost, time in problem.getSuccessors(n.state):
-                new_battery = n.battery - (cost/self.temperature)
+                new_battery = n.battery - (cost / self.temperature)
                 if new_battery > 0:
                     charging_time = 0
                     if problem.is_charging_station(n.state):
-                        desired_battery_level = 50
+                        desired_battery_level = 70
                         if desired_battery_level > n.battery:
                             charging_time = (desired_battery_level - n.battery) / self.charging_power
                             new_battery = desired_battery_level
                     new_state = (s, new_battery)
-                    new_g = n.g + time + charging_time
-                    if new_state not in reached or new_g < reached[new_state]:
+                    new_g = n.g + (time / 3600) + charging_time
+                    if new_state not in reached:# or new_g < reached[new_state]:
                         self.update_expanded(s)
-                        reached[new_state] = new_g
+                        # reached[new_state] = new_g
+                        reached.add(new_state)
                         new_h = self.heuristic(s, problem.goal, self.graph)
                         frontier.put(ElectricVehicleNode(s, n, action, new_g, new_h, new_battery))
         return None

@@ -13,7 +13,8 @@ print("Grafo generato con", len(G.nodes()), "nodi e", len(G.edges()), "archi")
 G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
 G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
 G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
-
+G = ox.utils_graph.convert.to_digraph(G, weight="travel_time")
+G = G.to_undirected()
 
 
 # Aggiungi stazioni di ricarica casuali se non sono già presenti
@@ -35,8 +36,8 @@ for node in G.nodes:
     y = (G.nodes[node]['y'] - min_y) / (max_y - min_y) * 600
     G.nodes[node]['pos'] = (int(x), int(y))
 
-for u, v, k, data in G.edges(keys=True, data=True):
-    print(u, v, k, data)
+for u, v, data in G.edges(data=True):
+    print(u, v, data)
 
 for node in G.nodes():
     print(node, G.nodes[node])
@@ -44,6 +45,9 @@ for node in G.nodes():
 # print(G.nodes[11778564649])
 # print(G.edges[11778564649, 877603872, 0])
 print("Grafo generato con", len(G.nodes()), "nodi e", len(G.edges()), "archi")
+print(G[11778564398].items())
+print(G.has_edge(11778564398, 862975005))
+print(G[11778564398][862975005]['travel_time'])
 
 #print(G.edges[11779835693, 867256802, 0]['travel_time'])
 

@@ -3,7 +3,8 @@ import osmnx as ox
 import random
 from path_finding import PathFinding
 from electric_vehicle import ElectricVehicleAStar
-from heuristics import time_based_heuristic
+from heuristics import electric_vehicle_heuristic
+import time
 """versione 2.0.0 con generazione di grafo da OSM e visualizzazione con pygame"""
 # Inizializza Pygame
 pygame.init()
@@ -24,6 +25,7 @@ def generate_osm_graph(location, dist, network_type, num_charging_stations): # G
     all_nodes = list(G.nodes) # Lista di tutti i nodi
     charging_stations = random.sample(all_nodes, num_charging_stations) # Scegli un numero casuale di stazioni di ricarica
     G = ox.utils_graph.convert.to_digraph(G, weight="travel_time") # Converte MultiDiGraph in DiGraph
+    G = G.to_undirected()
     
     for node in charging_stations: # Imposta le stazioni di ricarica casuali
         G.nodes[node]['charging_station'] = True
@@ -52,7 +54,7 @@ def draw_graph(graph, start_node, end_node, screen): # Disegna il grafo sulla fi
         elif graph.nodes[node].get('charging_station', False):
             color = (0, 0, 255) # Blu per le stazioni di ricarica
         else:
-            color = (255, 255, 0) # Giallo per gli altri nodi
+            color = (150, 150, 0) # Giallo per gli altri nodi
         pygame.draw.circle(screen, color, pos, 5) # Disegna i nodi
 # Disegna il percorso trovato sulla finestra di Pygame
 def draw_solution(graph, solution, screen):
@@ -62,23 +64,27 @@ def draw_solution(graph, solution, screen):
         pygame.draw.line(screen, (255, 0, 255), start_pos, end_pos, 4) # Disegna il percorso
 # Funzione principale
 def main():
+    start_time = time.time()
     # Impostazioni iniziali
     max_battery_capacity = 100   # Imposta la capacità massima della batteria in kWh
     min_battery_at_goal = 20     # Imposta la batteria minima di arrivo in %
     ambient_temperature = 20     # Imposta la temperatura ambientale
 
-    # location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
-    location_point = (37.79, -122.41) # Esempio: San Francisco
-    num_charging_stations = 50 # Numero di stazioni di ricarica
+    location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
+    # location_point = (37.79, -122.41) # Esempio: San Francisco
+    num_charging_stations = 10 # Numero di stazioni di ricarica
     min_battery_percent = max_battery_capacity * min_battery_at_goal / 100 # Batteria minima in percentuale
     G = generate_osm_graph(location_point, 1000, 'drive', num_charging_stations) # Genera il grafo
     start_node = random.choice(list(G.nodes())) # Scegli un nodo di partenza casuale
     end_node = random.choice(list(G.nodes())) # Scegli un nodo di arrivo casuale
+    print("tempo generazione grafo", time.time()-start_time)
+
     # Inizializza l'algoritmo di ricerca
     problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node].get('charging_station', False)], min_battery_percent)
     # Inizializza l'algoritmo di ricerca A*
-    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: time_based_heuristic(node_a, node_b, G), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
+    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: electric_vehicle_heuristic(node_a, node_b, G), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
     # astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: adaptive_heuristic(node_a, node_b, graph, ox.shortest_path(G, node_a, node_b)), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
+    print("tempo inizializzazione", time.time()-start_time)
 
     # Ciclo di gioco
     running = True
@@ -94,7 +100,9 @@ def main():
             i+=1
 
         # Aggiorna la visualizzazione per ogni nodo espanso
+        print("tempo inizio ricerca", time.time()-start_time)
         solution = astar.solve(problem)
+        print("tempo fine ricerca", time.time()-start_time)
         if solution:
             draw_solution(G, solution, screen)
         else:    

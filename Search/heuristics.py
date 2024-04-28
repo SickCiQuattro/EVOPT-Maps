@@ -17,6 +17,8 @@ def time_based_heuristic(node_a, node_b, graph):
     #     if edge_count > 0:
     #         average_time = total_time / edge_count
     #         return average_time / 3600  # Converti in ore
+    print(graph.has_edge(node_a, node_b))
+    print(graph.has_edge(node_b, node_a))
     if graph.has_edge(node_a, node_b):
         # Calcola il tempo medio di viaggio tra i nodi considerando tutti i collegamenti (edges)
         total_time = graph[node_a][node_b]['travel_time']
@@ -27,6 +29,18 @@ def time_based_heuristic(node_a, node_b, graph):
         distance_km = euclidean_distance(node_a, node_b, graph)
         estimated_time_hours = distance_km / average_speed_kph
         return estimated_time_hours
+    
+def electric_vehicle_heuristic(node_a, node_b, graph):
+    # Velocità media del veicolo elettrico in km/h
+    average_speed_kph = 50
+
+    # Calcola la distanza euclidea tra i nodi
+    distance_km = euclidean_distance(node_a, node_b, graph)
+
+    # Stima il tempo di viaggio basandosi sulla velocità media
+    estimated_time_hours = distance_km / average_speed_kph
+
+    return estimated_time_hours
 
 def blind(start, goal) -> int:
     return 0
