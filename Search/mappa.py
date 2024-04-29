@@ -53,9 +53,9 @@ print(G[11778564398][862975005]['travel_time'])
 
 dis = ox.shortest_path(G, 321625459, 828001274, weight='travel_time', cpus=1)
 print("quanti", len(dis),"eccoli", dis)
-path = ox.k_shortest_paths(G, 321625459, 828001274, k, weight='travel_time')
-for k in path:
-    print("path", k)
+# path = ox.k_shortest_paths(G, 321625459, 828001274, k, weight='travel_time')
+# for k in path:
+#     print("path", k)
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     # Raggio della Terra in km
@@ -90,3 +90,13 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 # 867256802 {'y': 45.891577, 'x': 10.1577854
 #877603949 1760984660
 #877604045 1760984660
+
+short = ox.routing.shortest_path(G, 11764570406, 8772991160, weight='travel_time', cpus=1)
+print("quanti", len(short),"eccoli", short)
+cost = 0
+speed = 0
+for i in range(len(short) - 1):
+    cost += G[short[i]][short[i+1]]['travel_time']
+    speed += G[short[i]][short[i+1]]['speed_kph']
+print("costo", cost)
+print("velocità", speed / len(short))

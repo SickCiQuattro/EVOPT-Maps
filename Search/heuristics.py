@@ -1,4 +1,5 @@
 import math
+import osmnx as ox
 
 def euclidean_distance(node_a, node_b, graph): # distanza euclidea tra due nodi
     x1, y1 = graph.nodes[node_a]['x'], graph.nodes[node_a]['y'] # coordinate geografiche deciamli del nodo_a
@@ -17,8 +18,8 @@ def time_based_heuristic(node_a, node_b, graph):
     #     if edge_count > 0:
     #         average_time = total_time / edge_count
     #         return average_time / 3600  # Converti in ore
-    print(graph.has_edge(node_a, node_b))
-    print(graph.has_edge(node_b, node_a))
+    # print(graph.has_edge(node_a, node_b))
+    # print(graph.has_edge(node_b, node_a))
     if graph.has_edge(node_a, node_b):
         # Calcola il tempo medio di viaggio tra i nodi considerando tutti i collegamenti (edges)
         total_time = graph[node_a][node_b]['travel_time']
@@ -33,10 +34,8 @@ def time_based_heuristic(node_a, node_b, graph):
 def electric_vehicle_heuristic(node_a, node_b, graph):
     # Velocità media del veicolo elettrico in km/h
     average_speed_kph = 50
-
     # Calcola la distanza euclidea tra i nodi
     distance_km = euclidean_distance(node_a, node_b, graph)
-
     # Stima il tempo di viaggio basandosi sulla velocità media
     estimated_time_hours = distance_km / average_speed_kph
 
@@ -45,7 +44,15 @@ def electric_vehicle_heuristic(node_a, node_b, graph):
 def blind(start, goal) -> int:
     return 0
 
-def haversine_distance(lat1, lon1, lat2, lon2):
+def shortest_destination(node_a, node_b, graph): # Diksra shortest path
+    short = ox.routing.shortest_path(graph, node_a, node_b, weight='travel_time', cpus=1)
+    # cost = sum(graph[i][j]['travel_time'] for i, j in zip(short[:-1], short[1:]))
+    cost = 0
+    for i in range(len(short) - 1):
+        cost += graph[short[i]][short[i+1]]['travel_time']
+    return cost / 3600
+
+def haversine_distance(lat1, lon1, lat2, lon2): # Distanza tra due punti sulla Terra in km
     # Raggio della Terra in km
     R = 6371.0
 
@@ -85,3 +92,4 @@ def adaptive_heuristic(node_a, node_b, graph, shortest_path):
         distance_km = euclidean_distance(node_a, node_b, graph)
         estimated_time_hours = distance_km / average_speed_kph
         return estimated_time_hours
+    
