@@ -98,7 +98,7 @@ class ElectricVehicle:
     #         # Aggiorna il punto di partenza per la prossima iterazione
     #         start = charging_station_start
 
-    def nearest_charging_station(graph, start, goal, solution, raggio):
+    def nearest_charging_station(self, graph, start, goal, solution, raggio):
         # Ottieni tutte le stazioni di ricarica
         charging_stations = [node for node in graph.nodes() if graph.nodes[node].get('charging_station', False)]
 
