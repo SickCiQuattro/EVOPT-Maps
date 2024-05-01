@@ -7,19 +7,6 @@ def euclidean_distance(node_a, node_b, graph): # distanza euclidea tra due nodi
     return haversine_distance(y1, x1, y2, x2)
 
 def time_based_heuristic(node_a, node_b, graph):
-    # Stima il tempo per raggiungere node_b da node_a
-    # if graph.has_edge(node_a, node_b):
-    #     # Calcola il tempo medio di viaggio tra i nodi considerando tutti i collegamenti (edges)
-    #     total_time = 0
-    #     edge_count = 0
-    #     for key in graph[node_a][node_b]:
-    #         total_time += graph[node_a][node_b][key]['travel_time']
-    #         edge_count += 1
-    #     if edge_count > 0:
-    #         average_time = total_time / edge_count
-    #         return average_time / 3600  # Converti in ore
-    # print(graph.has_edge(node_a, node_b))
-    # print(graph.has_edge(node_b, node_a))
     if graph.has_edge(node_a, node_b):
         # Calcola il tempo medio di viaggio tra i nodi considerando tutti i collegamenti (edges)
         total_time = graph[node_a][node_b]['travel_time']

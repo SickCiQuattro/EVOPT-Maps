@@ -1,8 +1,124 @@
 import osmnx as ox
+import heuristics as h
 from ASTAR import AStar, AstarNode
 from queue import PriorityQueue
+from path_finding import PathFinding
 
-class ElectricVehicleNode(AstarNode): # Nodo per la ricerca A* con veicolo elettrico
+class ElectricVehicle:
+    def __init__(self, battery_capacity=100, battery = 100, min_battery=20, electric_constant=0.06):
+        self.battery_capacity = battery_capacity
+        self.battery = battery
+        self.min_battery = min_battery
+        self.electric_constant = electric_constant
+        self.recharge = 0
+
+    def adaptive_search(self, graph, start, goal, ambient_temperature, path=[]):
+        # Inizializza l'algoritmo di ricerca
+        problem = PathFinding(graph, start, goal)
+        # Inizializza l'algoritmo di ricerca A*
+        astar = AStar(graph, h.euclidean_distance, view=True)
+        solution = astar.solve(problem)
+        # print("soluzione", solution, "dim", len(solution))
+        if solution is None:
+            return None
+    
+        # Calcola la distanza, la velocità e l'energia consumata
+        distance = speed = energy_consumed = 0
+        for i, j in solution:
+            distance = graph.edges[i, j].get('length', 10)
+            speed = graph.edges[i, j].get('speed_kph', 50)
+            energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
+
+        # Se l'energia consumata è inferiore alla capacità massima della batteria, restituisci il percorso
+        if energy_consumed < self.battery - self.min_battery:
+            # Aggiungi il percorso alla soluzione
+            path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
+            return path
+
+        max_distance = self.battery_capacity * ambient_temperature/(self.electric_constant*speed)
+        # Altrimenti, trova la stazione di ricarica più vicina e richiama la funzione
+        charging_station_start = self.nearest_charging_station(graph, start, goal, solution, max_distance * 0.8)
+        if charging_station_start is not None:
+            # Inizializza l'algoritmo di ricerca
+            problem = PathFinding(graph, start, charging_station_start)
+            # Inizializza l'algoritmo di ricerca A*
+            astar = AStar(graph, h.euclidean_distance, view=True)
+            solution = astar.solve(problem)
+            if solution is None:
+                return None
+            path += solution
+            self.battery = self.battery_capacity # da fare
+            self.recharge += 1
+            graph.nodes[charging_station_start]['charging_station'] = False
+
+            return self.adaptive_search(graph, charging_station_start, goal, ambient_temperature, path)
+
+        # Se non ci sono stazioni di ricarica raggiungibili, restituisci None
+        return None
+
+    # def adaptive_search(graph, start, goal, min_battery_percent, max_battery_capacity, battery, ambient_temperature, electric_constant, path=[]):
+    #     while True:
+    #         # Inizializza l'algoritmo di ricerca
+    #         problem = PathFinding(graph, start, goal)
+    #         # Inizializza l'algoritmo di ricerca A*
+    #         astar = AStar(graph, h.euclidean_distance, view=True)
+    #         solution = astar.solve(problem)
+    #         if solution is None:
+    #             return None
+
+    #         # Calcola la distanza, la velocità e l'energia consumata
+    #         distance = speed = energy_consumed = 0
+    #         for i, j in solution:
+    #             distance = graph.edges[i, j].get('length', 10)
+    #             speed = graph.edges[i, j].get('speed_kph', 50)
+    #             energy_consumed += electric_constant * (distance / 1000) * speed / ambient_temperature
+
+    #         # Se l'energia consumata è inferiore alla capacità massima della batteria, restituisci il percorso
+    #         if energy_consumed < battery - min_battery_percent:
+    #             path += solution
+    #             return path
+
+    #         max_distance = max_battery_capacity*ambient_temperature/(electric_constant*speed)
+    #         # Altrimenti, trova la stazione di ricarica più vicina
+    #         charging_station_start = nearest_charging_station(graph, start, goal, solution, max_distance * 0.8)
+    #         if charging_station_start is None:
+    #             return None
+
+    #         # Inizializza l'algoritmo di ricerca
+    #         problem = PathFinding(graph, start, charging_station_start)
+    #         # Inizializza l'algoritmo di ricerca A*
+    #         astar = AStar(graph, h.euclidean_distance, view=True)
+    #         solution = astar.solve(problem)
+    #         if solution is None:
+    #             return None
+    #         path += solution
+    #         battery = max_battery_capacity
+    #         graph.nodes[charging_station_start]['charging_station'] = False
+
+    #         # Aggiorna il punto di partenza per la prossima iterazione
+    #         start = charging_station_start
+
+    def nearest_charging_station(graph, start, goal, solution, raggio):
+        # Ottieni tutte le stazioni di ricarica
+        charging_stations = [node for node in graph.nodes() if graph.nodes[node].get('charging_station', False)]
+
+        distanza_minima = float('inf')
+        punto_vicino = None
+
+        for station in charging_stations:
+            start_dist = h.euclidean_distance(start, station, graph)
+            goal_dist = h.euclidean_distance(goal, station, graph)
+
+            # Verifica se il punto C è all'interno della circonferenza
+            if start_dist <= raggio:
+                # Verifica se il punto C è il più vicino al perimetro e a B
+                if start_dist + goal_dist < distanza_minima:
+                    distanza_minima = start_dist + goal_dist
+                    punto_vicino = station
+
+        return punto_vicino
+
+class ElectricVehicleNode(AstarNode): # Nodo per la ricerca A* con veicolo elettrico 
     def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100):
         super().__init__(state, parent, action, g)
         self.battery = battery

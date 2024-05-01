@@ -1,37 +1,15 @@
 class SearchProblem: # Problema di ricerca generico
+    def __init__(self, init, goal, graph, charging_stations, min_battery_at_goal):
+        self.init = init
+        self.goal = goal
+        self.graph = graph
+        self.charging_stations = charging_stations
+        self.min_battery_at_goal = min_battery_at_goal
+
     def __init__(self, init, goal, graph):
         self.init = init
         self.goal = goal
         self.graph = graph
-
-
-    # def getSuccessors(self, state): # MultiDiGraph
-    #     electric_constant = 0.05
-    #     successors = set()
-    #     for neighbor, edge_data in self.graph[state].items():
-    #         action = (state, neighbor)
-    #         distance = edge_data[list(edge_data.keys())[0]]['length']
-    #         speed = edge_data[list(edge_data.keys())[0]].get('speed_kph', 50)  # Velocità in km/h
-    #         energy_consumed = electric_constant * (distance / 1000) * speed # k * d(km) * v(km/h) = kWh * °C
-    #         time = edge_data[list(edge_data.keys())[0]]['travel_time']
-    #         successors.add((action, neighbor, energy_consumed, time))
-    #     return successors
-
-    # def getSuccessors(self, state): #DiGraph
-    #     # electric_constant = 0.05
-    #     electric_constant = 0.5
-    #     successors = set()
-    #     for neighbor, edge_data in self.graph[state].items():
-    #         action = (state, neighbor)
-    #         distance = edge_data.get('length', 100)
-    #         speed = edge_data.get('speed_kph', 50)  # Velocità in km/h
-    #         energy_consumed = electric_constant * (distance / 1000) * speed # k * d(km) * v(km/h) = kWh * °C
-    #         time = edge_data.get('travel_time', 10)
-    #         successors.add((action, neighbor, energy_consumed, time))
-    #     return successors
-
-    # def getSuccessors(self, state):
-    #     return set(self.graph[state].keys())
 
     def getSuccessors(self, state): #DiGraph
         electric_constant = 0.06
@@ -47,20 +25,7 @@ class SearchProblem: # Problema di ricerca generico
             successors.add((action, neighbor, energy_consumed, time))
         return successors
 
-    # def getSuccessors(self, state): # Ritorna i successori di uno stato
-    #     successors = set() # Insieme dei successori
-    #     for neighbor in self.graph.neighbors(state): # Per ogni vicino dello stato
-    #         action = (state, neighbor)
-    #         # Per MultiGraph, potrebbe essere necessario specificare la chiave per l'arco
-    #         # Se il grafo non è un MultiGraph, usa il seguente codice:
-    #         distance = self.graph.edges[state, neighbor].get('length', 1) # Calcola la distanza
-    #         # Se il grafo è un MultiGraph, usa il seguente codice:
-    #         # for key in self.graph[state][neighbor]:
-    #         #     distance = self.graph[state][neighbor][key].get('length', 1)
-    #         successors.add((action, neighbor, distance))
-    #     return successors
-
-    def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo e la batteria è sufficiente
+    def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo
         return state == self.goal and battery_level >= self.min_battery_at_goal
     
     def isGoal(self, state): # Verifica se uno stato è l'obiettivo
