@@ -19,8 +19,8 @@ pygame.display.set_caption('Simulazione Mappa Stradale')
 # Funzione per generare un grafo da OpenStreetMap
 def generate_osm_graph(location, dist, network_type, num_charging_stations): # Genera un grafo da OpenStreetMap
     # Scarica i dati della rete stradale da OSM e costruisci un modello MultiDiGraph
-    G = ox.graph_from_point(location, dist=dist, network_type=network_type) # Scarica i dati della rete stradale da OSM
-    # G = ox.graph_from_place('Milan, Italy', network_type='drive')  # Scarica i dati della rete stradale da OSM
+    # G = ox.graph_from_point(location, dist=dist, network_type=network_type) # Scarica i dati della rete stradale da OSM
+    G = ox.graph_from_place('Milan, Italy', network_type='drive')  # Scarica i dati della rete stradale da OSM
     # Aggiungi velocità, distanza e tempi di percorrenza agli archi
     G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
     G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
@@ -43,7 +43,7 @@ def generate_osm_graph(location, dist, network_type, num_charging_stations): # G
     for node in G.nodes:
         # Normalizza le coordinate in modo che si adattino alla finestra di Pygame
         x = (G.nodes[node]['x'] - min_x) / (max_x - min_x) * screen_width
-        y = (G.nodes[node]['y'] - min_y) / (max_y - min_y) * screen_height
+        y = (1-(G.nodes[node]['y'] - min_y) / (max_y - min_y)) * screen_height
         G.nodes[node]['pos'] = (int(x), int(y))
     return G
 
@@ -76,29 +76,44 @@ def adaptive_search(graph, start, goal, min_battery_percent, max_battery_capacit
     # Inizializza l'algoritmo di ricerca A*
     astar = AStar(graph, h.euclidean_distance, view=True)
     solution = astar.solve(problem)
+    print("soluzione", solution, "dim", len(solution))
     if solution is None:
         return None
     
-    if start.get('charging_station', False):
-        # Se l'obiettivo è una stazione di ricarica, ricarica la batteria
-        True
-
-    # Aggiungi il percorso alla soluzione
-    path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
+    # if start.get('charging_station', False):
+    #     # Se l'obiettivo è una stazione di ricarica, ricarica la batteria
+    #     True
 
     # Calcola la distanza, la velocità e l'energia consumata
-    distance = sum(graph[i][j]['length'] for i, j in zip(solution[:-1], solution[1:]))
-    speed = sum(graph[i][j]['speed_kph'] for i, j in zip(solution[:-1], solution[1:]))
+    distance = speed = 0
+    for i, j in solution:
+        distance += graph.edges[i, j].get('length', 10)
+        speed += graph.edges[i, j].get('speed_kph', 50)
+    # distance = sum(graph[i][j]['length'] for i, j in zip(solution[:-1], solution[1:]))
+    # speed = sum(graph.edges[i, j].get('speed_kph', 50) for i, j in zip(solution[:-1], solution[1:]))
     energy_consumed = electric_constant * (distance / 1000) * speed / ambient_temperature
 
     # Se l'energia consumata è inferiore alla capacità massima della batteria, restituisci il percorso
-    if energy_consumed < max_battery_capacity - min_battery_percent:
+    if energy_consumed < battery - min_battery_percent:
+        # Aggiungi il percorso alla soluzione
+        path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
         return path
 
     max_distance = max_battery_capacity*ambient_temperature/(electric_constant*speed)
     # Altrimenti, trova la stazione di ricarica più vicina e richiama la funzione
     charging_station_start = nearest_charging_station(graph, start, goal, solution, max_distance * 0.8)
     if charging_station_start is not None:
+        # Inizializza l'algoritmo di ricerca
+        problem = PathFinding(graph, start, charging_station_start)
+        # Inizializza l'algoritmo di ricerca A*
+        astar = AStar(graph, h.euclidean_distance, view=True)
+        solution = astar.solve(problem)
+        if solution is None:
+            return None
+        path += solution
+        battery = max_battery_capacity
+        graph.nodes[charging_station_start]['charging_station'] = False
+
         return adaptive_search(graph, charging_station_start, goal, min_battery_percent, max_battery_capacity, battery, ambient_temperature, electric_constant, path)
 
     # Se non ci sono stazioni di ricarica raggiungibili, restituisci None
@@ -152,35 +167,34 @@ def nearest_charging_station(graph, start, goal, solution, raggio):
 def main():
     start_time = time.time()
     # Impostazioni iniziali
-    max_battery_capacity = 50   # Imposta la capacità massima della batteria in kWh
+    max_battery_capacity = 5   # Imposta la capacità massima della batteria in kWh
     min_battery_at_goal = 20     # Imposta la batteria minima di arrivo in %
     ambient_temperature = 20     # Imposta la temperatura ambientale
     electric_constant = 0.06     # Costante per il calcolo del consumo energetico
+    battery = max_battery_capacity # Capacità iniziale della batteria
 
     # location_point = (45.89, 10.18)  # Esempio: Darfo Boario Terme
     location_point = (37.79, -122.41) # Esempio: San Francisco
-    num_charging_stations = 40 # Numero di stazioni di ricarica
+    num_charging_stations = 300 # Numero di stazioni di ricarica
     min_battery_percent = max_battery_capacity * min_battery_at_goal / 100 # Batteria minima in percentuale
     G = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations) # Genera il grafo
     nodes_list = list(G.nodes())
     start_node = random.choice(nodes_list) # Scegli un nodo di partenza casuale
+    print("start_node", start_node)
     end_node = random.choice(nodes_list) # Scegli un nodo di arrivo casuale
+    print("end_node", end_node)
 
     print("tempo generazione grafo", time.time()-start_time)
 
     # Inizializza l'algoritmo di ricerca
-    problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node].get('charging_station', False)], min_battery_percent)
-    # Inizializza l'algoritmo di ricerca A*
-    astar = AStar(G, h.euclidean_distance, view=True)
-    # astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: adaptive_heuristic(node_a, node_b, graph, ox.shortest_path(G, node_a, node_b)), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
-    solution = astar.solve(problem)
-    distance = sum(G[i][j]['length'] for i, j in zip(solution[:-1], solution[1:]))
-    speed = sum(G[i][j]['speed_kph'] for i, j in zip(solution[:-1], solution[1:]))
+    
+    # distance = sum(G[i][j]['length'] for i, j in zip(solution[:-1], solution[1:]))
+    # speed = sum(G[i][j]['speed_kph'] for i, j in zip(solution[:-1], solution[1:]))
 
-    energy_consumed = electric_constant * (distance / 1000) * speed / ambient_temperature
+    # energy_consumed = electric_constant * (distance / 1000) * speed / ambient_temperature
 
-    if energy_consumed < max_battery_capacity - min_battery_percent:
-        print("Percorso trovato con", len(solution), "azioni")
+    # if energy_consumed < max_battery_capacity - min_battery_percent:
+    #     print("Percorso trovato con", len(solution), "azioni")
     
     print("tempo inizializzazione", time.time()-start_time)
 
@@ -198,18 +212,22 @@ def main():
             pygame.display.flip()
             # Aggiorna la visualizzazione per ogni nodo espanso
             print("tempo inizio ricerca", time.time()-start_time)
-            solution = astar.solve(problem)
+            solution = adaptive_search(G, start_node, end_node, min_battery_percent, max_battery_capacity, battery, ambient_temperature, electric_constant)
+
             print("tempo fine ricerca", time.time()-start_time)
             if solution:
                 draw_solution(G, solution, screen)
             else:    
                 print("Percorso non trovato")
+                draw_solution(G, solution, screen)
             pygame.display.flip()
             instructions_executed = True
     pygame.quit()
     print("Soluzione:", solution)
     print("Percorso trovato con", len(solution), "azioni")
     print("Fine simulazione")
+    # for node in G.nodes():
+    #     print(node, G.nodes[node])
     
 if __name__ == "__main__":
     main()

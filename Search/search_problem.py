@@ -1,10 +1,9 @@
 class SearchProblem: # Problema di ricerca generico
-    def __init__(self, init, goal, graph, charging_stations, min_battery_at_goal):
+    def __init__(self, init, goal, graph):
         self.init = init
         self.goal = goal
         self.graph = graph
-        self.charging_stations = charging_stations
-        self.min_battery_at_goal = min_battery_at_goal
+
 
     # def getSuccessors(self, state): # MultiDiGraph
     #     electric_constant = 0.05

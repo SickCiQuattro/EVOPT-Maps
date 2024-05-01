@@ -100,3 +100,5 @@ for i in range(len(short) - 1):
     speed += G[short[i]][short[i+1]]['speed_kph']
 print("costo", cost)
 print("velocità", speed / len(short))
+G.nodes[11778564398]['street_count']= 100
+print(G.nodes[11778564398]['street_count'])
