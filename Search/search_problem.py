@@ -63,6 +63,9 @@ class SearchProblem: # Problema di ricerca generico
 
     def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo e la batteria è sufficiente
         return state == self.goal and battery_level >= self.min_battery_at_goal
+    
+    def isGoal(self, state): # Verifica se uno stato è l'obiettivo
+        return state == self.goal
 
     def is_charging_station(self, state): # Verifica se uno stato è una stazione di ricarica
         return state in self.charging_stations

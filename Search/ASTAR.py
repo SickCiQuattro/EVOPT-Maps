@@ -11,14 +11,15 @@ class AstarNode(Node): # Nodo per l'algoritmo A*
         return self.g + self.h < other.g + other.h
 
 class AStar(SearchAlgorithm): # A* search algorithm
-    def __init__(self, heuristic=lambda x, y: 0, view=False):
+    def __init__(self, graph, heuristic, view=False):
+        self.graph = graph
         self.heuristic = heuristic
         super().__init__(view)
 
     def solve(self, problem): # Risolve il problema
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità
-        frontier.put(AstarNode(problem.init, h=self.heuristic(problem.init, problem.goal))) # Inserisce il nodo iniziale
+        frontier.put(AstarNode(problem.init, h=self.heuristic(problem.init, problem.goal, self.graph))) # Inserisce il nodo iniziale
         reached.add(problem.init) # Aggiunge il nodo iniziale all'insieme degli stati raggiunti
         self.reset_expanded() # Resetta il numero di nodi espansi
 
@@ -26,12 +27,12 @@ class AStar(SearchAlgorithm): # A* search algorithm
             n = frontier.get() # Estrae il nodo con priorità più alta
             if problem.isGoal(n.state): # Se il nodo è lo stato obiettivo
                 return self.extract_solution(n) # Estrae la soluzione
-            for action, s, cost in problem.getSuccessors(n.state): # Per ogni azione, stato e costo dei successori dello stato corrente
+            for action, s, cost, t in problem.getSuccessors(n.state): # Per ogni azione, stato e costo dei successori dello stato corrente
                 if s not in reached: # Se il nuovo stato non è stato raggiunto
                     self.update_expanded(s) # Aggiorna il numero di nodi espansi
                     reached.add(s) # Aggiunge il nuovo stato all'insieme degli stati raggiunti
                     new_g = n.g + cost # Calcola il nuovo costo
-                    new_h = self.heuristic(s, problem.goal) # Calcola la nuova euristica
+                    new_h = self.heuristic(s, problem.goal, self.graph) # Calcola la nuova euristica
                     frontier.put(AstarNode(s, n, action, new_g, new_h)) # Inserisce il nuovo nodo nella coda di priorità
 
         return None

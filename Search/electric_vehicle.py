@@ -67,4 +67,32 @@ class ElectricVehicleAStar(AStar):
         if next_charging_station == problem.goal:
             return self.min_battery + energy_consume
         return energy_consume
+
+    def calculate_desired_battery_level(self, current_state, problem):
+        # Calcola il percorso più breve dalla stazione di ricarica corrente all'obiettivo
+        shortest_path = ox.routing.shortest_path(self.graph, current_state, problem.goal, weight='length', cpus=1)
+    
+        # Trova la prossima stazione di ricarica lungo il percorso più breve
+        next_charging_station = next((node for node in shortest_path if problem.is_charging_station(node)), problem.goal)
+    
+        # Calcola il costo del viaggio dalla stazione di ricarica corrente alla prossima stazione di ricarica
+        travel_length = sum(self.graph[i][j]['length'] for i, j in zip(shortest_path, shortest_path[1:]) if j != next_charging_station)
+        travel_speed = sum(self.graph[i][j]['speed_kph'] for i, j in zip(shortest_path, shortest_path[1:]) if j != next_charging_station)
+
+        # Calcola il livello di carica necessario per raggiungere la prossima stazione di ricarica
+        energy_consume = 0.06 * travel_length / 1000 * travel_speed / self.temperature
+    
+        # Se la batteria non è sufficiente per raggiungere la destinazione, trova la stazione di ricarica più vicina lungo il percorso
+        if energy_consume > self.battery:
+            nearest_charging_station = self.find_nearest_charging_station(current_state, problem)
+            if nearest_charging_station is not None:
+                next_charging_station = nearest_charging_station
+                shortest_path = ox.routing.shortest_path(self.graph, current_state, next_charging_station, weight='length', cpus=1)
+                travel_length = sum(self.graph[i][j]['length'] for i, j in zip(shortest_path, shortest_path[1:]))
+                travel_speed = sum(self.graph[i][j]['speed_kph'] for i, j in zip(shortest_path, shortest_path[1:]))
+                energy_consume = 0.06 * travel_length / 1000 * travel_speed / self.temperature
+
+        if next_charging_station == problem.goal:
+            return self.min_battery + energy_consume
+        return energy_consume
     
