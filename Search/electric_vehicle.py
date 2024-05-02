@@ -5,12 +5,14 @@ from queue import PriorityQueue
 from path_finding import PathFinding
 
 class ElectricVehicle:
-    def __init__(self, battery_capacity=100, battery = 100, min_battery=20, electric_constant=0.06):
+    def __init__(self, battery_capacity = 100, battery = 100, min_battery = 20, electric_constant = 0.06, energy_recharged = [], travel_time = 0):
         self.battery_capacity = battery_capacity
         self.battery = battery
         self.min_battery = min_battery
         self.electric_constant = electric_constant
         self.recharge = 0
+        self.energy_recharged = energy_recharged
+        self.travel_time = travel_time
 
     def adaptive_search(self, graph, start, goal, ambient_temperature, path=[]):
         # Inizializza l'algoritmo di ricerca
@@ -23,21 +25,23 @@ class ElectricVehicle:
             return None
     
         # Calcola la distanza, la velocità e l'energia consumata
-        distance = speed = energy_consumed = 0
+        distance = speed = energy_consumed = time = 0
         for i, j in solution:
             distance = graph.edges[i, j].get('length', 10)
             speed = graph.edges[i, j].get('speed_kph', 50)
             energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
+            time += graph.edges[i, j].get('travel_time', 10)
 
         # Se l'energia consumata è inferiore alla capacità massima della batteria, restituisci il percorso
         if energy_consumed < self.battery - self.min_battery:
             # Aggiungi il percorso alla soluzione
             path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
+            self.travel_time += time
             return path
 
         max_distance = self.battery_capacity * ambient_temperature/(self.electric_constant*speed)
         # Altrimenti, trova la stazione di ricarica più vicina e richiama la funzione
-        charging_station_start = self.nearest_charging_station(graph, start, goal, solution, max_distance * 0.8)
+        charging_station_start = self.nearest_charging_station(graph, start, goal, solution, max_distance)
         if charging_station_start is not None:
             # Inizializza l'algoritmo di ricerca
             problem = PathFinding(graph, start, charging_station_start)
@@ -47,7 +51,15 @@ class ElectricVehicle:
             if solution is None:
                 return None
             path += solution
+
+            for i, j in solution:
+                self.travel_time += graph.edges[i, j].get('travel_time', 10)
+
+            # Ricarica la batteria vediamo che metodo usare
+            self.energy_recharged.append(self.battery_capacity - self.battery)
+            self.travel_time += (self.battery_capacity - self.battery) / 22
             self.battery = self.battery_capacity # da fare
+            
             self.recharge += 1
             graph.nodes[charging_station_start]['charging_station'] = False
 
@@ -55,6 +67,34 @@ class ElectricVehicle:
 
         # Se non ci sono stazioni di ricarica raggiungibili, restituisci None
         return None
+    
+    def smart_charge(self, graph, current_location, goal, ambient_temperature): #boh
+        # Calcola la distanza alla prossima stazione di ricarica
+        next_charging_station = self.nearest_charging_station(graph, current_location, goal)
+        if next_charging_station is None:
+            return False
+
+        distance_to_next_station = h.euclidean_distance(current_location, next_charging_station, graph)
+        speed = graph.edges[current_location, next_charging_station].get('speed_kph', 50)
+        energy_needed_to_reach_next_station = self.electric_constant * (distance_to_next_station / 1000) * speed / ambient_temperature
+
+        # Calcola l'energia necessaria per raggiungere la destinazione finale
+        distance_to_goal = h.euclidean_distance(next_charging_station, goal, graph)
+        energy_needed_to_reach_goal = self.electric_constant * (distance_to_goal / 1000) * speed / ambient_temperature
+
+        # Calcola l'energia totale necessaria
+        total_energy_needed = energy_needed_to_reach_next_station + energy_needed_to_reach_goal
+
+        # Se l'energia totale necessaria è superiore alla capacità della batteria, ricarica al massimo
+        if total_energy_needed > self.battery_capacity:
+            self.battery = self.battery_capacity
+        else:
+            # Altrimenti, ricarica solo l'energia necessaria
+            self.battery = total_energy_needed
+
+        self.energy_recharged.append(self.battery_capacity - self.battery)
+        self.recharge += 1
+        return True
 
     # def adaptive_search(graph, start, goal, min_battery_percent, max_battery_capacity, battery, ambient_temperature, electric_constant, path=[]):
     #     while True:
@@ -101,22 +141,28 @@ class ElectricVehicle:
     def nearest_charging_station(self, graph, start, goal, solution, raggio):
         # Ottieni tutte le stazioni di ricarica
         charging_stations = [node for node in graph.nodes() if graph.nodes[node].get('charging_station', False)]
-
         distanza_minima = float('inf')
-        punto_vicino = None
+        best_station = None
+        distance = 0
 
-        for station in charging_stations:
+        for i, j in solution: # Calcola 80% distanza percorso migliore
+            distance += graph.edges[i, j].get('length', 10) / 1000
+            if distance > raggio * 0.8:
+                start = i
+                raggio -= distance
+                break
+
+        for station in charging_stations: # Trova la stazione di ricarica più vicina al punto del percorso
             start_dist = h.euclidean_distance(start, station, graph)
             goal_dist = h.euclidean_distance(goal, station, graph)
-
-            # Verifica se il punto C è all'interno della circonferenza
+            # Verifica se la stazione è all'interno della circonferenza
             if start_dist <= raggio:
-                # Verifica se il punto C è il più vicino al perimetro e a B
+                # Verifica se la stazione è la più vicina al perimetro e al goal
                 if start_dist + goal_dist < distanza_minima:
                     distanza_minima = start_dist + goal_dist
-                    punto_vicino = station
+                    best_station = station
 
-        return punto_vicino
+        return best_station
 
 class ElectricVehicleNode(AstarNode): # Nodo per la ricerca A* con veicolo elettrico 
     def __init__(self, state, parent=None, action=None, g=0, h=0, battery=100):

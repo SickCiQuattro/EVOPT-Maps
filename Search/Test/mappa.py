@@ -102,3 +102,5 @@ print("costo", cost)
 print("velocità", speed / len(short))
 G.nodes[11778564398]['street_count']= 100
 print(G.nodes[11778564398]['street_count'])
+a = G.nodes[11778564398]
+print(a)

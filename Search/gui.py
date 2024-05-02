@@ -52,7 +52,7 @@ def main():
     start_time = time.time()
     # Impostazioni iniziali
 
-    battery_capacity = 8   # Imposta la capacità massima della batteria in kWh
+    battery_capacity = 5   # Imposta la capacità massima della batteria in kWh
     battery_at_goal_percent = 20     # Imposta la batteria minima di arrivo in %
     electric_constant = 0.5     # Imposta la costante elettrica
     battery = battery_capacity # Imposta la batteria iniziale
