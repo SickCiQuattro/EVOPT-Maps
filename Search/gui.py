@@ -10,7 +10,7 @@ from folium.plugins import MarkerCluster
 def generate_osm_graph(location, dist, network_type, num_charging_stations):
     # Genera un grafo da OpenStreetMap
     # G = ox.graph_from_point(location, dist=dist, network_type=network_type, simplify=False)
-    G = ox.graph_from_place('Milan', network_type='drive')  # Scarica i dati della rete stradale da OSM
+    G = ox.graph_from_place('New York', network_type='drive')  # Scarica i dati della rete stradale da OSM
     G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
     G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
     G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
@@ -52,9 +52,9 @@ def main():
     start_time = time.time()
     # Impostazioni iniziali
 
-    battery_capacity = 5   # Imposta la capacità massima della batteria in kWh
+    battery_capacity = 13   # Imposta la capacità massima della batteria in kWh
     battery_at_goal_percent = 20     # Imposta la batteria minima di arrivo in %
-    electric_constant = 0.5     # Imposta la costante elettrica
+    electric_constant = 0.7     # Imposta la costante elettrica
     battery = battery_capacity # Imposta la batteria iniziale
 
     battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
@@ -63,7 +63,7 @@ def main():
     ambient_temperature = 20     # Imposta la temperatura ambientale
     location_point = (37.79, -122.41) # Esempio: San Francisco
     #location_point = (45.5257, 10.2283) # Esempio: Milano
-    num_charging_stations = 500 # Numero di stazioni di ricarica
+    num_charging_stations = 4000 # Numero di stazioni di ricarica
     # Genera il grafo e le stazioni di ricarica
     G, charging_stations = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations)
     # Scegli un nodo di partenza e di arrivo casuale
@@ -72,7 +72,7 @@ def main():
     end_node = random.choice(nodes_list)
 
     print("tempo inizio ricerca", time.time()-start_time)
-    solution = ev.ElectricVehicle.adaptive_search(electric_vehicle, G, start_node, end_node, ambient_temperature)
+    solution = ev.ElectricVehicle.adaptive_search_nonricorsiva(electric_vehicle, G, start_node, end_node, ambient_temperature)
 
     print("tempo fine ricerca", time.time()-start_time)
     if solution:
@@ -81,9 +81,11 @@ def main():
         m.save("path.html")
     else:    
         print("Percorso non trovato")
+
+    print("battery", electric_vehicle.battery, "energia ricaricata", electric_vehicle.energy_recharged, "tempo in ore", electric_vehicle.travel_time/3600)
+    print("Macchina ricaricata ", electric_vehicle.recharge, " volte")
     print("Soluzione:", solution)
     print("Percorso trovato con", len(solution), "azioni")
-    print("Macchina ricaricata ", electric_vehicle.recharge, " volte")
     print("Fine simulazione")
 
 # Esegui la funzione main

@@ -1,4 +1,13 @@
-class SearchProblem: # Problema di ricerca generico
+class SearchProblem:
+    """Rappresenta un problema di ricerca generico.
+
+    Args:
+        init: Il nodo iniziale.
+        goal: Il nodo obiettivo.
+        graph: Il grafo su cui eseguire la ricerca.
+        charging_stations: (Opzionale) Una lista di stazioni di ricarica.
+        min_battery_at_goal: (Opzionale) La quantità minima di batteria richiesta al raggiungimento dell'obiettivo.
+    """
     def __init__(self, init, goal, graph, charging_stations, min_battery_at_goal):
         self.init = init
         self.goal = goal
@@ -11,7 +20,15 @@ class SearchProblem: # Problema di ricerca generico
         self.goal = goal
         self.graph = graph
 
-    def getSuccessors(self, state): #DiGraph
+    def getSuccessors(self, state):
+        """Restituisce i successori di uno stato.
+
+        Args:
+            state: Lo stato di cui ottenere i successori.
+
+        Returns:
+            Un insieme di tuple, ognuna delle quali contiene un'azione, un successore, l'energia consumata per raggiungere il successore e il tempo impiegato.
+        """
         electric_constant = 0.06
         # electric_constant = 1
         successors = set()
@@ -25,11 +42,36 @@ class SearchProblem: # Problema di ricerca generico
             successors.add((action, neighbor, energy_consumed, time))
         return successors
 
-    def isGoal(self, state, battery_level): # Verifica se uno stato è l'obiettivo
+    def isGoal(self, state, battery_level):
+        """Verifica se uno stato è l'obiettivo, considerando anche il livello della batteria.
+
+        Args:
+            state: Lo stato da verificare.
+            battery_level: Il livello attuale della batteria.
+
+        Returns:
+            True se lo stato è l'obiettivo e il livello della batteria è sufficiente, altrimenti False.
+        """
         return state == self.goal and battery_level >= self.min_battery_at_goal
     
-    def isGoal(self, state): # Verifica se uno stato è l'obiettivo
+    def isGoal(self, state):
+        """Verifica se uno stato è l'obiettivo, senza considerare il livello della batteria.
+
+        Args:
+            state: Lo stato da verificare.
+
+        Returns:
+            True se lo stato è l'obiettivo, altrimenti False.
+        """
         return state == self.goal
 
-    def is_charging_station(self, state): # Verifica se uno stato è una stazione di ricarica
+    def is_charging_station(self, state):
+        """Verifica se uno stato è una stazione di ricarica.
+
+        Args:
+            state: Lo stato da verificare.
+
+        Returns:
+            True se lo stato è una stazione di ricarica, altrimenti False.
+        """
         return state in self.charging_stations

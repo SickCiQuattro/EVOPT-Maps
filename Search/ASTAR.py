@@ -2,21 +2,45 @@ from search_algorithm import SearchAlgorithm, Node
 from queue import PriorityQueue
 """A* search algorithm implementation."""
 
-class AstarNode(Node): # Nodo per l'algoritmo A*
-    def __init__(self, state, parent=None, action=None, g=0, h=0): # Costruttore
+class AstarNode(Node):
+    """Nodo per l'algoritmo A*.
+
+    Args:
+        state: Lo stato del nodo.
+        parent: Il nodo genitore.
+        action: L'azione che ha portato a questo nodo.
+        g: Il costo per raggiungere questo nodo.
+        h: L'euristica per questo nodo.
+    """
+    def __init__(self, state, parent = None, action = None, g = 0, h = 0): # Costruttore
         super().__init__(state, parent, action, g)
         self.h = h
 
     def __lt__(self, other): # Confronta due nodi
         return self.g + self.h < other.g + other.h
 
-class AStar(SearchAlgorithm): # A* search algorithm
-    def __init__(self, graph, heuristic, view=False):
+class AStar(SearchAlgorithm):
+    """A* search algorithm.
+
+    Args:
+        graph: Il grafo su cui eseguire l'algoritmo.
+        heuristic: La funzione euristica da utilizzare.
+        view: Se True, visualizza l'output dell'algoritmo.
+    """
+    def __init__(self, graph, heuristic, view = False):
         self.graph = graph
         self.heuristic = heuristic
         super().__init__(view)
 
-    def solve(self, problem): # Risolve il problema
+    def solve(self, problem):
+        """Risolve il problema utilizzando l'algoritmo A*.
+
+        Args:
+            problem: Il problema da risolvere.
+
+        Returns:
+            La soluzione al problema, se esiste. Altrimenti, None.
+        """
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità
         frontier.put(AstarNode(problem.init, h=self.heuristic(problem.init, problem.goal, self.graph))) # Inserisce il nodo iniziale
