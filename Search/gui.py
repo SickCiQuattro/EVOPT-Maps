@@ -5,12 +5,14 @@ import time
 import electric_vehicle as ev
 import numpy as np
 from folium.plugins import MarkerCluster
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
 
 # Funzione per generare un grafo da OpenStreetMap
 def generate_osm_graph(location, dist, network_type, num_charging_stations):
     # Genera un grafo da OpenStreetMap
     # G = ox.graph_from_point(location, dist=dist, network_type=network_type, simplify=False)
-    G = ox.graph_from_place('New York', network_type='drive')  # Scarica i dati della rete stradale da OSM
+    G = ox.graph_from_place('Brescia', network_type='drive')  # Scarica i dati della rete stradale da OSM
     G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
     G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
     G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
@@ -63,14 +65,34 @@ def main():
     ambient_temperature = 20     # Imposta la temperatura ambientale
     location_point = (37.79, -122.41) # Esempio: San Francisco
     #location_point = (45.5257, 10.2283) # Esempio: Milano
-    num_charging_stations = 4000 # Numero di stazioni di ricarica
+    num_charging_stations = 6000 # Numero di stazioni di ricarica
     # Genera il grafo e le stazioni di ricarica
+     # Crea un geolocalizzatore
+    geolocator = Nominatim(user_agent="bsGeocoder")
+
+    # Ottieni le coordinate geografiche della città o del paese
+    start_coordinates = input("Inserisci il punto di partenza: ")
+    start_coordinates_result = geolocator.geocode(start_coordinates)
+
+    end_coordinates = input("Inserisci il nome della città o del paese: ")
+    end_coordinates_result = geolocator.geocode(end_coordinates)
+
     G, charging_stations = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations)
     # Scegli un nodo di partenza e di arrivo casuale
-    nodes_list = list(G.nodes())
-    start_node = random.choice(nodes_list)
-    end_node = random.choice(nodes_list)
+    #nodes_list = list(G.nodes())
+    #start_node = random.choice(nodes_list)
+    #end_node = random.choice(nodes_list)
+    # Trova il nodo più vicino
+    start_nearest_node = ox.nearest_nodes(G, start_coordinates_result.longitude, start_coordinates_result.latitude)
+    end_nearest_node = ox.nearest_nodes(G, end_coordinates_result.longitude, end_coordinates_result.latitude)
 
+    # Ottieni le coordinate del nodo
+    start_node_lat, start_node_lon = G.nodes[start_nearest_node]['y'], G.nodes[start_nearest_node]['x']
+    end_node_lat, end_node_lon = G.nodes[end_nearest_node]['y'], G.nodes[end_nearest_node]['x']
+    
+    start_node=[start_node_lat, start_node_lon]
+    end_node=[end_node_lat, end_node_lon]
+    print(type(start_node), type(end_node))
     print("tempo inizio ricerca", time.time()-start_time)
     solution = ev.ElectricVehicle.adaptive_search_nonricorsiva(electric_vehicle, G, start_node, end_node, ambient_temperature)
 
