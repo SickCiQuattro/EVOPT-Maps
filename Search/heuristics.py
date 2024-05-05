@@ -93,7 +93,6 @@ def adaptive_heuristic(node_a, node_b, graph, shortest_path):
         edge_count = 0
         for key in shortest_path:
             if graph.has_edge(key, node_b):
-                # total_time += graph[key][node_b][0]['travel_time']
                 total_time += graph[key][node_b]['travel_time']
                 edge_count += 1
         if edge_count > 0:

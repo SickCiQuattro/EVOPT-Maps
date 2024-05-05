@@ -6,7 +6,6 @@ import electric_vehicle as ev
 import numpy as np
 from folium.plugins import MarkerCluster
 from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
 import webbrowser
 from sklearn.neighbors import BallTree
 
@@ -63,9 +62,10 @@ def main():
     start_time = time.time()
     # Impostazioni iniziali
 
-    battery_capacity = 13   # Imposta la capacità massima della batteria in kWh
-    battery_at_goal_percent = 20     # Imposta la batteria minima di arrivo in %
-    electric_constant = 0.7     # Imposta la costante elettrica
+    battery_capacity = 9   # Imposta la capacità massima della batteria in kWh
+    battery_at_goal_percent = 30     # Imposta la batteria minima di arrivo in %
+    # electric_constant = 0.05     # Imposta la costante elettrica
+    electric_constant = 0.4     # Imposta la costante elettrica
     battery = battery_capacity # Imposta la batteria iniziale
 
     battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
@@ -76,7 +76,7 @@ def main():
     #location_point = (45.5257, 10.2283) # Esempio: Milano
     num_charging_stations = 6000 # Numero di stazioni di ricarica
     # Genera il grafo e le stazioni di ricarica
-     # Crea un geolocalizzatore
+    # Crea un geolocalizzatore
     geolocator = Nominatim(user_agent="bsGeocoder")
 
     # Ottieni le coordinate geografiche della città o del paese
@@ -98,7 +98,7 @@ def main():
 
     print(start_node, end_node)
     print("tempo inizio ricerca", time.time()-start_time)
-    solution = ev.ElectricVehicle.adaptive_search_nonricorsiva(electric_vehicle, G, start_node, end_node, ambient_temperature)
+    solution = ev.ElectricVehicle.adaptive_search(electric_vehicle, G, start_node, end_node, ambient_temperature)
 
     print("tempo fine ricerca", time.time()-start_time)
     if solution:

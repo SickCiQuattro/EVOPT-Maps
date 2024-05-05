@@ -8,12 +8,6 @@ class SearchProblem:
         charging_stations: (Opzionale) Una lista di stazioni di ricarica.
         min_battery_at_goal: (Opzionale) La quantità minima di batteria richiesta al raggiungimento dell'obiettivo.
     """
-    def __init__(self, init, goal, graph, charging_stations, min_battery_at_goal):
-        self.init = init
-        self.goal = goal
-        self.graph = graph
-        self.charging_stations = charging_stations
-        self.min_battery_at_goal = min_battery_at_goal
 
     def __init__(self, init, goal, graph):
         self.init = init
@@ -30,7 +24,6 @@ class SearchProblem:
             Un insieme di tuple, ognuna delle quali contiene un'azione, un successore, l'energia consumata per raggiungere il successore e il tempo impiegato.
         """
         electric_constant = 0.06
-        # electric_constant = 1
         successors = set()
         for neighbor in self.graph.neighbors(state):
             action = (state, neighbor)
@@ -52,7 +45,7 @@ class SearchProblem:
         Returns:
             True se lo stato è l'obiettivo e il livello della batteria è sufficiente, altrimenti False.
         """
-        return state == self.goal and battery_level >= self.min_battery_at_goal
+        return state == self.goal and battery_level >= self.veicle.min_battery
     
     def isGoal(self, state):
         """Verifica se uno stato è l'obiettivo, senza considerare il livello della batteria.

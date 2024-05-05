@@ -3,9 +3,10 @@ import osmnx as ox
 import random
 import time
 from path_finding import PathFinding
-from electric_vehicle import ElectricVehicleAStar
+from electricASTAR import ElectricVehicleAStar
 from heuristics import shortest_destination
 import numpy as np
+import electric_vehicle as ev
 
 def generate_osm_graph(location, dist, network_type, num_charging_stations):
     # Genera un grafo da OpenStreetMap
@@ -48,6 +49,15 @@ def main():
     location_point = (37.79, -122.41) # Esempio: San Francisco
     num_charging_stations = 40 # Numero di stazioni di ricarica
     min_battery_percent = max_battery_capacity * min_battery_at_goal / 100 # Batteria minima in percentuale
+
+    battery_capacity = 9   # Imposta la capacità massima della batteria in kWh
+    battery_at_goal_percent = 30     # Imposta la batteria minima di arrivo in %
+    electric_constant = 0.4     # Imposta la costante elettrica
+    battery = battery_capacity # Imposta la batteria iniziale
+
+    battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
+    electric_vehicle = ev.ElectricVehicle(battery_capacity, battery, battery_at_goal, electric_constant)
+
     # Genera il grafo e le stazioni di ricarica
     G, charging_stations = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations)
 
@@ -57,8 +67,11 @@ def main():
     end_node = random.choice(nodes_list)
 
 
+    # problem = PathFinding(graph, start, goal) # Inizializza il problema di ricerca
+    # astar = AStar(graph, h.euclidean_distance, view = True)
+    
     # Inizializza l'algoritmo di ricerca
-    problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node].get('charging_station', False)], min_battery_percent)
+    problem = PathFinding(G, start_node, end_node, charging_stations, min_battery_at_goal)
     # Inizializza l'algoritmo di ricerca A*
     astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: shortest_destination(node_a, node_b, G), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_percent, temperature=ambient_temperature)
 

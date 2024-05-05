@@ -12,8 +12,6 @@ class PathFinding(SearchProblem):
         charging_stations: (Opzionale) Una lista di stazioni di ricarica.
         min_battery_at_goal: (Opzionale) La quantità minima di batteria richiesta al raggiungimento dell'obiettivo.
     """
-    def __init__(self, graph, init, goal, charging_stations, min_battery_at_goal):
-        super().__init__(init, goal, graph, charging_stations, min_battery_at_goal)
 
     def __init__(self, graph, init, goal):
         super().__init__(init, goal, graph)
