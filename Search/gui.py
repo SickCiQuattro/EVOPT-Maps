@@ -7,6 +7,8 @@ import numpy as np
 from folium.plugins import MarkerCluster
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
+import webbrowser
+from sklearn.neighbors import BallTree
 
 # Funzione per generare un grafo da OpenStreetMap
 def generate_osm_graph(location, dist, network_type, num_charging_stations):
@@ -48,6 +50,13 @@ def draw_solution_on_map(graph, solution, start_node, end_node, charging_station
     for station in charging_stations:
         folium.Marker(location=[graph.nodes[station]['y'], graph.nodes[station]['x']], popup=f'Charging Station: {station}', icon=folium.Icon(color='green', prefix='fa', icon='bolt')).add_to(marker_cluster)
     return m
+    
+# Funzione per trovare il nodo più vicino che esiste nel grafo
+def nearest_existing_node(G, lat, lon):
+    nodes = np.array([[data['y'], data['x']] for _, data in G.nodes(data=True)])
+    tree = BallTree(nodes, leaf_size=2)
+    index = tree.query([[lat, lon]], k=1, return_distance=False)[0][0]
+    return list(G.nodes)[index]
 
 # Funzione principale
 def main():
@@ -78,21 +87,16 @@ def main():
     end_coordinates_result = geolocator.geocode(end_coordinates)
 
     G, charging_stations = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations)
-    # Scegli un nodo di partenza e di arrivo casuale
+    #Scegli un nodo di partenza e di arrivo casuale
     #nodes_list = list(G.nodes())
     #start_node = random.choice(nodes_list)
     #end_node = random.choice(nodes_list)
     # Trova il nodo più vicino
-    start_nearest_node = ox.nearest_nodes(G, start_coordinates_result.longitude, start_coordinates_result.latitude)
-    end_nearest_node = ox.nearest_nodes(G, end_coordinates_result.longitude, end_coordinates_result.latitude)
-
-    # Ottieni le coordinate del nodo
-    start_node_lat, start_node_lon = G.nodes[start_nearest_node]['y'], G.nodes[start_nearest_node]['x']
-    end_node_lat, end_node_lon = G.nodes[end_nearest_node]['y'], G.nodes[end_nearest_node]['x']
     
-    start_node=[start_node_lat, start_node_lon]
-    end_node=[end_node_lat, end_node_lon]
-    print(type(start_node), type(end_node))
+    start_node = nearest_existing_node(G, start_coordinates_result.latitude, start_coordinates_result.longitude)
+    end_node = nearest_existing_node(G, end_coordinates_result.latitude, end_coordinates_result.longitude)
+
+    print(start_node, end_node)
     print("tempo inizio ricerca", time.time()-start_time)
     solution = ev.ElectricVehicle.adaptive_search_nonricorsiva(electric_vehicle, G, start_node, end_node, ambient_temperature)
 
@@ -101,6 +105,7 @@ def main():
         m = draw_solution_on_map(G, solution, start_node, end_node, charging_stations)
         # Salva la mappa come HTML
         m.save("path.html")
+        webbrowser.open('path.html')
     else:    
         print("Percorso non trovato")
 
