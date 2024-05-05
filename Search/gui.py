@@ -8,12 +8,12 @@ from folium.plugins import MarkerCluster
 from geopy.geocoders import Nominatim
 import webbrowser
 from sklearn.neighbors import BallTree
+from geopy.exc import GeocoderTimedOut
 
 # Funzione per generare un grafo da OpenStreetMap
-def generate_osm_graph(location, dist, network_type, num_charging_stations):
+def generate_osm_graph(location, num_charging_stations):
     # Genera un grafo da OpenStreetMap
-    # G = ox.graph_from_point(location, dist=dist, network_type=network_type, simplify=False)
-    G = ox.graph_from_place('Brescia', network_type='drive')  # Scarica i dati della rete stradale da OSM
+    G = ox.graph_from_place(location, network_type='drive')  # Scarica i dati della rete stradale da OSM
     G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
     G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
     G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
@@ -32,9 +32,9 @@ def generate_osm_graph(location, dist, network_type, num_charging_stations):
 def draw_solution_on_map(graph, solution, start_node, end_node, charging_stations):
     
     # Crea una mappa centrata sulla posizione media dei nodi
-    location = np.mean([[graph.nodes[node]['y'], graph.nodes[node]['x']] for node in graph.nodes], axis=0)
+    start_node_coordinates = [graph.nodes[start_node]['y'], graph.nodes[start_node]['x']]
     # Crea una mappa con folium
-    m = folium.Map(location=location,tiles='CartoDB Positron', zoom_start=14)
+    m = folium.Map(location=start_node_coordinates,tiles='CartoDB Positron', zoom_start=14)
     # Disegna il percorso sulla mappa
     for action in solution:
         start_pos = [graph.nodes[action[0]]['y'], graph.nodes[action[0]]['x']]
@@ -57,42 +57,64 @@ def nearest_existing_node(G, lat, lon):
     index = tree.query([[lat, lon]], k=1, return_distance=False)[0][0]
     return list(G.nodes)[index]
 
+# Funzione per verificare che la città inserita esista
+def get_city(geolocator, prompt):
+    while True:
+        city = input(prompt).capitalize()
+        try:
+            result = geolocator.geocode(city)
+            if result is not None:
+                return result.address  # Restituisce il nome del luogo
+            else:
+                print("La città inserita non esiste. Per favore, riprova.")
+        except GeocoderTimedOut:
+            print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+
+# Funzione per verificare che il luogo inserito esista
+def get_coordinates(geolocator, prompt):
+    while True:
+        location = input(prompt).capitalize()
+        try:
+            result = geolocator.geocode(location)
+            if result is not None:
+                return result
+            else:
+                print("Il luogo inserito non esiste. Per favore, riprova.")
+        except GeocoderTimedOut:
+            print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+
 # Funzione principale
-def main():
+def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates):
     start_time = time.time()
     # Impostazioni iniziali
-
     battery_capacity = 9   # Imposta la capacità massima della batteria in kWh
-    battery_at_goal_percent = 30     # Imposta la batteria minima di arrivo in %
+    #battery_at_goal_percent = 30     # Imposta la batteria minima di arrivo in %
     # electric_constant = 0.05     # Imposta la costante elettrica
     electric_constant = 0.4     # Imposta la costante elettrica
     battery = battery_capacity # Imposta la batteria iniziale
+    battery_at_goal_percent = input("Inserisci la percentuale di batteria minima di arrivo: ") # Batteria minima in percentuale
+    battery_at_goal_percent = int(battery_at_goal_percent)
 
     battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
     electric_vehicle = ev.ElectricVehicle(battery_capacity, battery, battery_at_goal, electric_constant)
 
     ambient_temperature = 20     # Imposta la temperatura ambientale
-    location_point = (37.79, -122.41) # Esempio: San Francisco
-    #location_point = (45.5257, 10.2283) # Esempio: Milano
-    num_charging_stations = 6000 # Numero di stazioni di ricarica
-    # Genera il grafo e le stazioni di ricarica
+    num_charging_stations = 10000 # Numero di stazioni di ricarica
+    
     # Crea un geolocalizzatore
     geolocator = Nominatim(user_agent="bsGeocoder")
 
+    # Inserisci la città o il paese
+    location = get_city(geolocator, "Inserisci la città o il paese: ")
+    location_city = ' '+ location +' '
+
     # Ottieni le coordinate geografiche della città o del paese
-    start_coordinates = input("Inserisci il punto di partenza: ")
-    start_coordinates_result = geolocator.geocode(start_coordinates)
-
-    end_coordinates = input("Inserisci il nome della città o del paese: ")
-    end_coordinates_result = geolocator.geocode(end_coordinates)
-
-    G, charging_stations = generate_osm_graph(location_point, 3000, 'drive', num_charging_stations)
-    #Scegli un nodo di partenza e di arrivo casuale
-    #nodes_list = list(G.nodes())
-    #start_node = random.choice(nodes_list)
-    #end_node = random.choice(nodes_list)
-    # Trova il nodo più vicino
+    start_coordinates_result = get_coordinates(geolocator, "Inserisci il luogo di partenza: ")
+    end_coordinates_result = get_coordinates(geolocator, "Inserisci il luogo di destinazione: ")
+    # Genera il grafo e le stazioni di ricarica
+    G, charging_stations = generate_osm_graph(location_city, num_charging_stations)
     
+    # Trova il nodo più vicino al punto di partenza e di destinazione
     start_node = nearest_existing_node(G, start_coordinates_result.latitude, start_coordinates_result.longitude)
     end_node = nearest_existing_node(G, end_coordinates_result.latitude, end_coordinates_result.longitude)
 
