@@ -58,41 +58,37 @@ def nearest_existing_node(G, lat, lon):
     return list(G.nodes)[index]
 
 # Funzione per verificare che la città inserita esista
-def get_city(geolocator, prompt):
-    while True:
-        city = input(prompt).capitalize()
-        try:
-            result = geolocator.geocode(city)
-            if result is not None:
-                return result.address  # Restituisce il nome del luogo
-            else:
-                print("La città inserita non esiste. Per favore, riprova.")
-        except GeocoderTimedOut:
-            print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+def get_city(geolocator, city):
+    city = city.capitalize()
+    try:
+        result = geolocator.geocode(city)
+        if result is not None:
+            return result.address  # Restituisce il nome del luogo
+        else:
+            print("La città inserita non esiste. Per favore, riprova.")
+    except GeocoderTimedOut:
+        print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
 
 # Funzione per verificare che il luogo inserito esista
-def get_coordinates(geolocator, prompt):
-    while True:
-        location = input(prompt).capitalize()
-        try:
-            result = geolocator.geocode(location)
-            if result is not None:
-                return result
-            else:
-                print("Il luogo inserito non esiste. Per favore, riprova.")
-        except GeocoderTimedOut:
-            print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+def get_coordinates(geolocator, location):
+    location = location.capitalize()
+    try:
+        result = geolocator.geocode(location)
+        if result is not None:
+            return result  # Restituisce l'oggetto Location, non solo l'indirizzo
+        else:
+            print("Il luogo inserito non esiste. Per favore, riprova.")
+    except GeocoderTimedOut:
+        print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+
 
 # Funzione principale
-def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates):
+def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant):
     start_time = time.time()
     # Impostazioni iniziali
-    battery_capacity = 9   # Imposta la capacità massima della batteria in kWh
-    #battery_at_goal_percent = 30     # Imposta la batteria minima di arrivo in %
-    # electric_constant = 0.05     # Imposta la costante elettrica
-    electric_constant = 0.4     # Imposta la costante elettrica
+    battery_capacity = battery_capacity   # Imposta la capacità massima della batteria in kWh
+    electric_constant = electric_constant     # Imposta la costante elettrica
     battery = battery_capacity # Imposta la batteria iniziale
-    battery_at_goal_percent = input("Inserisci la percentuale di batteria minima di arrivo: ") # Batteria minima in percentuale
     battery_at_goal_percent = int(battery_at_goal_percent)
 
     battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
@@ -104,19 +100,12 @@ def main(battery_at_goal_percent, location_city, start_coordinates, end_coordina
     # Crea un geolocalizzatore
     geolocator = Nominatim(user_agent="bsGeocoder")
 
-    # Inserisci la città o il paese
-    location = get_city(geolocator, "Inserisci la città o il paese: ")
-    location_city = ' '+ location +' '
-
-    # Ottieni le coordinate geografiche della città o del paese
-    start_coordinates_result = get_coordinates(geolocator, "Inserisci il luogo di partenza: ")
-    end_coordinates_result = get_coordinates(geolocator, "Inserisci il luogo di destinazione: ")
     # Genera il grafo e le stazioni di ricarica
     G, charging_stations = generate_osm_graph(location_city, num_charging_stations)
     
     # Trova il nodo più vicino al punto di partenza e di destinazione
-    start_node = nearest_existing_node(G, start_coordinates_result.latitude, start_coordinates_result.longitude)
-    end_node = nearest_existing_node(G, end_coordinates_result.latitude, end_coordinates_result.longitude)
+    start_node = nearest_existing_node(G, start_coordinates.latitude, start_coordinates.longitude)
+    end_node = nearest_existing_node(G, end_coordinates.latitude, end_coordinates.longitude)
 
     print(start_node, end_node)
     print("tempo inizio ricerca", time.time()-start_time)
@@ -137,6 +126,153 @@ def main(battery_at_goal_percent, location_city, start_coordinates, end_coordina
     print("Percorso trovato con", len(solution), "azioni")
     print("Fine simulazione")
 
-# Esegui la funzione main
-if __name__ == "__main__":
-    main()
+
+import tkinter as tk
+import customtkinter as ctk
+import tkinter.messagebox
+
+electric_vehicle_data = {
+    "Tesla Model 3 Standard Range Plus": {
+        "battery_capacity_kWh": 54,
+        "electric_constant": 0.05
+    },
+    "MINI Electric": {
+        "battery_capacity_kWh": 32.6,
+        "electric_constant": 0.055
+    },
+    "Renault Twizy": {
+        "battery_capacity_kWh": 6.1,
+        "electric_constant": 0.07
+    },
+    "Renault Twingo Electric": {
+        "battery_capacity_kWh": 22,
+        "electric_constant": 0.06
+    },
+    "Fiat 500e": {
+        "battery_capacity_kWh": 42,
+        "electric_constant": 0.055
+    }
+}
+
+def change_mode():
+    if var.get():
+        # Modalità scura
+        ctk.set_appearance_mode("dark")
+    else:
+        # Modalità chiara
+        ctk.set_appearance_mode("light")
+
+    # Aggiorna i colori dei widget
+    root.update_idletasks()
+
+# Crea la finestra principale
+root = ctk.CTk()
+
+# Imposta le dimensioni della finestra
+window_width = 800
+window_height = 600
+
+# Ottieni le dimensioni dello schermo
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+# Calcola la posizione per centrare la finestra
+position_top = int(screen_height / 2 - window_height / 2)
+position_left = int(screen_width / 2 - window_width / 2)
+
+# Posiziona la finestra al centro dello schermo
+root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+
+# Rendi la finestra non ridimensionabile
+root.resizable(False, False)
+
+# Crea un Checkbutton per cambiare la modalità
+var = tk.IntVar()
+checkbutton = ctk.CTkSwitch(root, text="Modalità scura", variable=var, command=change_mode)
+checkbutton.pack(anchor='ne', padx=10, pady=10)
+
+# Crea un titolo di benvenuto
+welcome_label = ctk.CTkLabel(root, text="Benvenuto nel Path Finder per veicoli elettrici!", font=("Helvetica", 24))
+welcome_label.pack(pady=20)
+
+# Crea una combobox per selezionare un veicolo elettrico
+label_vehicle = ctk.CTkLabel(root, text="Seleziona un veicolo elettrico:", font=("Arial", 14))
+label_vehicle.pack(pady=2)
+
+def combobox_callback(choice):
+    print("combobox dropdown clicked:", choice)
+
+vehicle_var = ctk.StringVar(value=list(electric_vehicle_data.keys())[0])
+vehicle_combobox = ctk.CTkComboBox(root, values=list(electric_vehicle_data.keys()),
+                                    command=combobox_callback, variable=vehicle_var)
+vehicle_combobox.pack(pady=1)
+
+# Crea i widget
+label_battery = ctk.CTkLabel(root, text="Inserisci la percentuale di batteria minima di arrivo:", font=("Arial", 14))
+label_battery.pack(pady=1)
+entry_battery = ctk.CTkEntry(root)
+entry_battery.pack(pady=1)
+
+label_location = ctk.CTkLabel(root, text="Inserisci la città o il paese:", font=("Arial", 14))
+label_location.pack(pady=1)
+entry_location = ctk.CTkEntry(root)
+entry_location.pack(pady=1)
+
+label_start = ctk.CTkLabel(root, text="Inserisci il luogo di partenza:", font=("Arial", 14))
+label_start.pack(pady=1)
+entry_start = ctk.CTkEntry(root)
+entry_start.pack(pady=1)
+
+label_end = ctk.CTkLabel(root, text="Inserisci il luogo di destinazione:", font=("Arial", 14))
+label_end.pack(pady=1)
+entry_end = ctk.CTkEntry(root)
+entry_end.pack(pady=1)
+
+def run_algorithm():
+    # Ottieni i valori inseriti dall'utente
+    battery_at_goal_percent = entry_battery.get()
+    location_city = entry_location.get()
+    start_location = entry_start.get()
+    end_location = entry_end.get()
+
+    # Crea un geolocalizzatore
+    geolocator = Nominatim(user_agent="bsGeocoder")
+
+    # Ottieni le coordinate dei luoghi di partenza e di destinazione
+    start_coordinates = get_coordinates(geolocator, start_location)
+    end_coordinates = get_coordinates(geolocator, end_location)
+
+    # Verifica se i valori inseriti sono validi
+    if start_coordinates is None:
+        tkinter.messagebox.showerror("Errore", "Il luogo di partenza inserito non esiste. Per favore, riprova.")
+        entry_start.delete(0, 'end')
+    if end_coordinates is None:
+        tkinter.messagebox.showerror("Errore", "Il luogo di destinazione inserito non esiste. Per favore, riprova.")
+        entry_end.delete(0, 'end')
+    if location_city is None:
+        tkinter.messagebox.showerror("Errore", "La città o il paese inserito non esiste. Per favore, riprova.")
+        entry_location.delete(0, 'end')
+    if battery_at_goal_percent is None:
+        tkinter.messagebox.showerror("Errore", "La percentuale di batteria minima di arrivo inserita non è valida. Per favore, riprova.")
+        entry_battery.delete(0, 'end')
+
+    # Se tutti i valori sono validi, chiama la funzione main
+    if start_coordinates is not None and end_coordinates is not None and location_city is not None and battery_at_goal_percent is not None:
+        selected_vehicle = vehicle_combobox.get()
+        vehicle_data = electric_vehicle_data[selected_vehicle]
+        battery_capacity = vehicle_data["battery_capacity_kWh"]
+        electric_constant = vehicle_data["electric_constant"]
+        main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant)
+
+button_run = ctk.CTkButton(root, text="Esegui", command=run_algorithm)
+
+# Posiziona i widget con dello spazio extra
+entry_battery.pack(pady=1)
+entry_location.pack(pady=1)
+entry_start.pack(pady=1)
+entry_end.pack(pady=1)
+button_run.pack(pady=15)
+
+# Avvia il loop principale
+root.mainloop()
+
