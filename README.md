@@ -48,7 +48,7 @@ python3 gui.py
 5. Open path.html to view the map with the optimal route.
 
 ## Documentation
-The documentation is available [here](https://raw.githack.com/PasticciniTeams/ElectricRecharge/blob/main/docs/_build/html/index.html).
+The documentation is available [here](https://raw.githack.com/PasticciniTeams/ElectricRecharge/main/docs/_build/html/index.html).
 
 ## License
 
