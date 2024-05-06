@@ -2,24 +2,24 @@ class Node:
     """Rappresenta un nodo in un algoritmo di ricerca.
 
     Args:
-        state: Lo stato corrente del nodo.
-        parent: Il nodo genitore.
-        action: L'azione che ha portato a questo stato.
-        g: Il costo del percorso per arrivare a questo nodo.
+        state (any): Lo stato corrente del nodo.
+        parent (Node, optional): Il nodo genitore. Default a None.
+        action (any, optional): L'azione che ha portato a questo stato. Default a None.
+        g (int or float, optional): Il costo del percorso per arrivare a questo nodo. Default a 0.
     """
-    def __init__(self, state, parent=None, action=None, g=0): # Nodo di ricerca
-        self.state = state # Stato corrente
-        self.parent = parent # Nodo padre
-        self.action = action # Azione che ha portato allo stato corrente
-        self.g = g # Costo del percorso
+    def __init__(self, state, parent = None, action = None, g = 0):
+        self.state = state
+        self.parent = parent
+        self.action = action
+        self.g = g
 
 class SearchAlgorithm:
     """Classe base per un algoritmo di ricerca.
 
     Args:
-        view: Se True, visualizza l'output dell'algoritmo.
+        view (bool, optional): Se True, visualizza l'output dell'algoritmo. Default a False.
     """
-    def __init__(self, view=False): # Inizializza l'algoritmo di ricerca
+    def __init__(self, view = False): # Inizializza l'algoritmo di ricerca
         self.expanded = 0 # Numero di nodi espansi
         self.expanded_states = set() # Insieme degli stati espansi
         self.view = view # Visualizzazione
@@ -30,7 +30,10 @@ class SearchAlgorithm:
         Questo metodo dovrebbe essere implementato dalle sottoclassi.
 
         Args:
-            problem: Il problema da risolvere.
+            problem (SearchProblem): Il problema da risolvere.
+
+        Raises:
+            NotImplementedError: Se il metodo non è stato implementato dalla sottoclasse.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
 
@@ -38,7 +41,7 @@ class SearchAlgorithm:
         """Aggiorna il numero di nodi espansi.
 
         Args:
-            state: Lo stato del nodo da aggiungere all'insieme degli stati espansi.
+            state (any): Lo stato del nodo da aggiungere all'insieme degli stati espansi.
         """
         if self.view:
             self.expanded_states.add(state)
@@ -54,7 +57,7 @@ class SearchAlgorithm:
         """Estrae la soluzione a partire da un nodo.
 
         Args:
-            node: Il nodo da cui estrarre la soluzione.
+            node (Node): Il nodo da cui estrarre la soluzione.
 
         Returns:
             Una lista delle azioni che portano alla soluzione.

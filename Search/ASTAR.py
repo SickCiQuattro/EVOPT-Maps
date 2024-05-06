@@ -43,7 +43,7 @@ class AStar(SearchAlgorithm):
         """
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità
-        frontier.put(AstarNode(problem.init, h=self.heuristic(problem.init, problem.goal, self.graph))) # Inserisce il nodo iniziale
+        frontier.put(AstarNode(problem.init, h = self.heuristic(problem.init, problem.goal, self.graph))) # Inserisce il nodo iniziale
         reached.add(problem.init) # Aggiunge il nodo iniziale all'insieme degli stati raggiunti
         self.reset_expanded() # Resetta il numero di nodi espansi
 

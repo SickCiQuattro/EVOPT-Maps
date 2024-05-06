@@ -1,172 +1,280 @@
-import pygame
-import networkx as nx
-import random
-import json
-from path_finding import PathFinding
-from electric_vehicle import ElectricVehicleAStar
-from heuristics import euclidean_distance
+import folium
 import osmnx as ox
-"""versione 1.0.0 con generazione di grafo casuale e visualizzazione con pygame"""
-# Inizializza Pygame
-pygame.init()
-screen_width, screen_height = 800, 600 # Dimensioni della finestra
-screen = pygame.display.set_mode((screen_width, screen_height))
-pygame.display.set_caption('Simulazione Mappa Stradale')
+import random
+import time
+import electric_vehicle as ev
+import numpy as np
+import webbrowser
+from folium.plugins import MarkerCluster
+from geopy.geocoders import Nominatim
+from sklearn.neighbors import BallTree
+from geopy.exc import GeocoderTimedOut
 
-# Genera un grafo connesso con percorsi alternativi
-def generate_connected_graph(num_nodes, num_charging_stations): # Genera un grafo connesso
-    G = nx.connected_watts_strogatz_graph(num_nodes, k=3, p=0.5)  # decidere valori di k e p
-    for node in G.nodes():  # Posizioni casuali
-        G.nodes[node]['pos'] = (random.randint(0, screen_width - 10), random.randint(0, screen_height - 10))
-        G.nodes[node]['charging_station'] = False  # Nessuna stazione di ricarica
-    for node in random.sample(list(G.nodes()), num_charging_stations):  # Stazioni di ricarica casuali
-        G.nodes[node]['charging_station'] = True  # Aggiungi stazioni di ricarica
-    return G
+# Funzione per generare un grafo da OpenStreetMap
+def generate_osm_graph(location, num_charging_stations):
+    # Genera un grafo da OpenStreetMap
+    G = ox.graph_from_place(location, network_type='drive')  # Scarica i dati della rete stradale da OSM
+    G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
+    G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
+    G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
+    # Aggiungi stazioni di ricarica casuali
+    all_nodes = list(G.nodes)
+    # Scegli un numero casuale di stazioni di ricarica
+    charging_stations = random.sample(all_nodes, num_charging_stations)
+    G = ox.utils_graph.convert.to_digraph(G, weight="travel_time") # Converte MultiDiGraph in DiGraph
+    #G = G.to_undirected() # Converte in un grafo non diretto
+    for node in charging_stations:
+        G.nodes[node]['charging_station'] = True
 
-# Disegna il grafo sulla finestra di Pygame
-def draw_graph(graph, start_node, end_node, screen):
-    for edge in graph.edges(): # Disegna gli archi
-        pygame.draw.line(screen, (200, 200, 200), graph.nodes[edge[0]]['pos'], graph.nodes[edge[1]]['pos'], 2)
+    return G, charging_stations
 
-    for node in graph.nodes():
-        pos = graph.nodes[node]['pos']
-        if node == start_node:
-            color = (255, 0, 0) # Rosso per il punto di partenza    
-        elif node == end_node:
-            color = (0, 255, 0) # Verde per il punto di arrivo
-        elif graph.nodes[node]['charging_station']:
-            color = (0, 0, 255) # Blu per le stazioni di ricarica
-        else:
-            color = (255, 255, 0) # Giallo per gli altri nodi
-        pygame.draw.circle(screen, color, pos, 5) # Disegna i nodi
-
-# Disegna il percorso trovato sulla finestra di Pygame
-def draw_solution(graph, solution, screen):
+# Funzione per disegnare il percorso sulla mappa
+def draw_solution_on_map(graph, solution, start_node, end_node, charging_stations):
+    # Crea una mappa centrata sulla posizione media dei nodi
+    start_node_coordinates = [graph.nodes[start_node]['y'], graph.nodes[start_node]['x']]
+    # Crea una mappa con folium
+    m = folium.Map(location=start_node_coordinates,tiles='CartoDB Positron', zoom_start=14)
+    # Disegna il percorso sulla mappa
     for action in solution:
-        start_pos = graph.nodes[action[0]]['pos']
-        end_pos = graph.nodes[action[1]]['pos']
-        pygame.draw.line(screen, (255, 0, 255), start_pos, end_pos, 4)
-
-#DA IMPLEMENTARE L'UTILIZZO
-def import_graph_from_json(file_name):
-    # Leggi i dati JSON dal file
-    with open(file_name, 'r') as json_file:
-        graph_data = json.load(json_file)
+        start_node_data = graph.nodes[action[0]]
+        end_node_data = graph.nodes[action[1]]
+        start_pos = [start_node_data['y'], start_node_data['x']]
+        end_pos = [end_node_data['y'], end_node_data['x']]
+        folium.PolyLine(locations=[start_pos, end_pos], color="red", weight=2.5, opacity=1).add_to(m)
+    # Aggiungi marcatori per il nodo di partenza e di destinazione
+    folium.Marker(location=[graph.nodes[start_node]['y'], graph.nodes[start_node]['x']], popup='Start', icon=folium.Icon(color='blue',prefix='fa',icon='car')).add_to(m)
+    folium.Marker(location=[graph.nodes[end_node]['y'], graph.nodes[end_node]['x']], popup='End', icon=folium.Icon(color='red', prefix='fa', icon='map-pin')).add_to(m)
+    # Crea un oggetto MarkerCluster
+    marker_cluster = MarkerCluster().add_to(m)
+    # Aggiungi marcatori per tutte le stazioni di ricarica
+    for station in charging_stations:
+        station_data = graph.nodes[station]
+        folium.Marker(location=[station_data['y'], station_data['x']], popup=f'Charging Station: {station}', icon=folium.Icon(color='green', prefix='fa', icon='bolt')).add_to(marker_cluster)
+    return m
     
-    # Converti i dati del dizionario in un grafo
-    graph = nx.node_link_graph(graph_data)
-    
-    return graph
+# Funzione per trovare il nodo più vicino che esiste nel grafo
+def nearest_existing_node(G, lat, lon):
+    nodes = np.array([[data['y'], data['x']] for _, data in G.nodes(data=True)])
+    tree = BallTree(nodes, leaf_size=2)
+    index = tree.query([[lat, lon]], k=1, return_distance=False)[0][0]
+    return list(G.nodes)[index]
 
-#DA IMPLEMENTARE L'UTILIZZO
-def export_graph_to_json(graph, file_name):
-    # Converti il grafo in un formato di dati dizionario
-    graph_data = nx.node_link_data(graph)
-    
-    # Scrivi i dati del dizionario in un file JSON
-    with open(file_name, 'w') as json_file:
-        json.dump(graph_data, json_file, indent=4)
-    
-    print(f"La mappa è stata esportata come {file_name}")
+# Funzione per verificare che la città inserita esista
+#NONSIUSA
+def get_city(geolocator, city):
+    city = city.capitalize()
+    try:
+        result = geolocator.geocode(city)
+        if result is not None:
+            return result.address  # Restituisce il nome del luogo
+        else:
+            print("La città inserita non esiste. Per favore, riprova.")
+    except GeocoderTimedOut:
+        print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
+
+# Funzione per verificare che il luogo inserito esista
+def get_coordinates(geolocator, location):
+    location = location.capitalize()
+    try:
+        result = geolocator.geocode(location)
+        if result is not None:
+            return result  # Restituisce l'oggetto Location, non solo l'indirizzo
+        else:
+            print("Il luogo inserito non esiste. Per favore, riprova.")
+    except GeocoderTimedOut:
+        print("Errore di timeout del geolocalizzatore. Per favore, riprova.")
 
 
-def main(): # Funzione principale
-    #initial_battery_level = 100  # Imposta il livello iniziale della batteria # DA IMPLEMENTARE
-    max_battery_capacity = 100   # Imposta la capacità massima della batteria
-    min_battery_at_goal = 20     # Imposta la batteria minima di arrivo
+# Funzione principale
+def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant):
+    start_time = time.time()
+    # Impostazioni iniziali
+    battery_capacity = battery_capacity   # Imposta la capacità massima della batteria in kWh
+    electric_constant = electric_constant     # Imposta la costante elettrica
+    battery = battery_capacity # Imposta la batteria iniziale
+    battery_at_goal_percent = int(battery_at_goal_percent)
+
+    battery_at_goal = battery_capacity * battery_at_goal_percent / 100 # Batteria minima in percentuale
+    electric_vehicle = ev.ElectricVehicle(battery_capacity, battery, battery_at_goal, electric_constant)
+
     ambient_temperature = 20     # Imposta la temperatura ambientale
+    num_charging_stations = 10000 # Numero di stazioni di ricarica
+    
+    # Crea un geolocalizzatore
+    geolocator = Nominatim(user_agent = "bsGeocoder")
 
-    num_nodes = 20
-    num_charging_stations = 5
-    G = generate_connected_graph(num_nodes, num_charging_stations) # Genera il grafo
-    start_node = random.choice(list(G.nodes())) # Scegli un nodo di partenza casuale
-    end_node = random.choice(list(G.nodes())) # Scegli un nodo di arrivo casuale
+    # Genera il grafo e le stazioni di ricarica
+    G, charging_stations = generate_osm_graph(location_city, num_charging_stations)
+    
+    # Trova il nodo più vicino al punto di partenza e di destinazione
+    start_node = nearest_existing_node(G, start_coordinates.latitude, start_coordinates.longitude)
+    end_node = nearest_existing_node(G, end_coordinates.latitude, end_coordinates.longitude)
 
-    # # Utilizza OSMnx per ottenere i dati della mappa # DA IMPLEMENTARE
-    # location_point = (37.79, -122.41)  # Esempio: San Francisco
-    # G = ox.graph_from_point(location_point, dist=750, network_type='drive')
-    # G = ox.speed.add_edge_speeds(G)
-    # G = ox.speed.add_edge_travel_times(G)
+    print(start_node, end_node)
+    print("tempo inizio ricerca", time.time() - start_time)
+    solution = ev.ElectricVehicle.adaptive_search(electric_vehicle, G, start_node, end_node, ambient_temperature)
 
-    # Inizializza l'algoritmo di ricerca
-    problem = PathFinding(G, start_node, end_node, [node for node in G.nodes() if G.nodes[node]['charging_station']], min_battery_at_goal)
-    astar = ElectricVehicleAStar(G, heuristic=lambda node_a, node_b, graph=G: euclidean_distance(node_a, node_b, graph), view=True, battery_capacity=max_battery_capacity, min_battery=min_battery_at_goal, temperature=ambient_temperature)
+    print("tempo fine ricerca", time.time() - start_time)
+    if solution:
+        m = draw_solution_on_map(G, solution, start_node, end_node, charging_stations)
+        # Salva la mappa come HTML
+        m.save("path.html")
+        webbrowser.open('path.html')
+    else:    
+        print("Percorso non trovato")
 
-    # Ciclo di gioco
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        screen.fill((0, 0, 0))
-        draw_graph(G, start_node, end_node, screen)
-
-        # Aggiorna la visualizzazione per ogni nodo espanso
-        solution = astar.solve(problem)
-        if solution:
-            draw_solution(G, solution, screen) # Disegna il percorso trovato
-
-        pygame.display.flip()
-
-    pygame.quit()
+    print("battery", electric_vehicle.battery, "energia ricaricata", electric_vehicle.energy_recharged, "tempo in ore", electric_vehicle.travel_time / 3600)
+    print("Macchina ricaricata ", electric_vehicle.recharge, " volte")
+    print("Soluzione:", solution)
+    print("Percorso trovato con", len(solution), "azioni")
     print("Fine simulazione")
 
-if __name__ == "__main__":
-    main()
 
+import tkinter as tk
+import customtkinter as ctk
+import tkinter.messagebox
 
-# def adaptive_search(self, graph, start, goal, ambient_temperature, path=[]):
-#         # Inizializza l'algoritmo di ricerca
-#         problem = PathFinding(graph, start, goal)
-#         # Inizializza l'algoritmo di ricerca A*
-#         astar = AStar(graph, h.euclidean_distance, view=True)
-#         solution = astar.solve(problem)
-#         # print("soluzione", solution, "dim", len(solution))
-#         if solution is None:
-#             print("Percorso tot non trovato")
-#             return None
-    
-#         # Calcola la distanza, la velocità e l'energia consumata
-#         distance = speed = energy_consumed = time = 0
-#         for i, j in solution:
-#             distance = graph.edges[i, j].get('length', 10)
-#             speed = graph.edges[i, j].get('speed_kph', 50)
-#             energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
-#             time += graph.edges[i, j].get('travel_time', 10)
+electric_vehicle_data = {
+    "Tesla Model 3 Standard Range Plus": {
+        "battery_capacity_kWh": 54,
+        "electric_constant": 0.05
+    },
+    "MINI Electric": {
+        "battery_capacity_kWh": 32.6,
+        "electric_constant": 0.055
+    },
+    "Renault Twizy": {
+        "battery_capacity_kWh": 6.1,
+        "electric_constant": 0.07
+    },
+    "Renault Twingo Electric": {
+        "battery_capacity_kWh": 22,
+        "electric_constant": 0.06
+    },
+    "Fiat 500e": {
+        "battery_capacity_kWh": 42,
+        "electric_constant": 0.055
+    }
+}
 
-#         # Se l'energia consumata è inferiore alla capacità massima della batteria, restituisci il percorso
-#         if energy_consumed < self.battery - self.min_battery:
-#             # Aggiungi il percorso alla soluzione
-#             path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
-#             self.travel_time += time
-#             self.battery -= energy_consumed
-#             return path
+def change_mode():
+    if var.get():
+        # Modalità scura
+        ctk.set_appearance_mode("dark")
+    else:
+        # Modalità chiara
+        ctk.set_appearance_mode("light")
 
-#         charging_station_start, solution, energy_consumed, time = self.nearest_charging_station(graph, start, goal, solution, ambient_temperature)
-#         if charging_station_start is None:
-#             print("Stazione di ricarica non trovata")
-#             return None
-#         if solution is None:
-#             print("Percorso stazione non trovato")
-#             return None
-            
-#         # Aggiungi il percorso alla soluzione
-#         path += solution # se il nodo iniziale è uguale sostituisci, altrimenti cerca il nodo iniziale di soluzion in path e sostituisci da li
-#         self.travel_time += time
-#         self.battery -= energy_consumed
+    # Aggiorna i colori dei widget
+    root.update_idletasks()
 
-#         distance = h.euclidean_distance(charging_station_start, goal, graph)
-#         energy_needed = (self.electric_constant * distance * 60 / ambient_temperature) * 1.2
-#         if energy_needed >= self.battery_capacity or energy_needed + self.min_battery >= self.battery_capacity or energy_needed + self.battery >= self.battery_capacity:
-#             recharge_needed = self.battery_capacity - self.battery
-#         else:
-#             recharge_needed = energy_needed
-#             #recharge_needed = self.battery_capacity - self.battery
-#         self.energy_recharged.append(recharge_needed)
-#         self.travel_time += (recharge_needed) / 22 * 3600
-#         self.battery = recharge_needed   
-#         self.recharge += 1
-#         graph.nodes[charging_station_start]['charging_station'] = False
-#         print("qua ci arrivo")
-#         return self.adaptive_search(graph, charging_station_start, goal, ambient_temperature, path)
+# Crea la finestra principale
+root = ctk.CTk()
+
+# Imposta le dimensioni della finestra
+window_width = 800
+window_height = 600
+
+# Ottieni le dimensioni dello schermo
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+# Calcola la posizione per centrare la finestra
+position_top = int(screen_height / 2 - window_height / 2)
+position_left = int(screen_width / 2 - window_width / 2)
+
+# Posiziona la finestra al centro dello schermo
+root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+
+# Rendi la finestra non ridimensionabile
+root.resizable(False, False)
+
+# Crea un Checkbutton per cambiare la modalità
+var = tk.IntVar()
+checkbutton = ctk.CTkSwitch(root, text="Modalità scura", variable=var, command=change_mode)
+checkbutton.pack(anchor='ne', padx=10, pady=10)
+
+# Crea un titolo di benvenuto
+welcome_label = ctk.CTkLabel(root, text = "Benvenuto nel Path Finder per veicoli elettrici!", font = ("Helvetica", 24))
+welcome_label.pack(pady = 20)
+
+# Crea una combobox per selezionare un veicolo elettrico
+label_vehicle = ctk.CTkLabel(root, text = "Seleziona un veicolo elettrico:", font = ("Arial", 14))
+label_vehicle.pack(pady = 2)
+
+def combobox_callback(choice):
+    print("combobox dropdown clicked:", choice)
+
+vehicle_var = ctk.StringVar(value = list(electric_vehicle_data.keys())[0])
+vehicle_combobox = ctk.CTkComboBox(root, values = list(electric_vehicle_data.keys()),
+                                    command = combobox_callback, variable = vehicle_var)
+vehicle_combobox.pack(pady = 1)
+
+# Crea i widget
+label_battery = ctk.CTkLabel(root, text="Inserisci la percentuale di batteria minima di arrivo:", font = ("Arial", 14))
+label_battery.pack(pady = 1)
+entry_battery = ctk.CTkEntry(root)
+entry_battery.pack(pady = 1)
+
+label_location = ctk.CTkLabel(root, text="Inserisci la città o il paese:", font = ("Arial", 14))
+label_location.pack(pady = 1)
+entry_location = ctk.CTkEntry(root)
+entry_location.pack(pady = 1)
+
+label_start = ctk.CTkLabel(root, text="Inserisci il luogo di partenza:", font = ("Arial", 14))
+label_start.pack(pady = 1)
+entry_start = ctk.CTkEntry(root)
+entry_start.pack(pady = 1)
+
+label_end = ctk.CTkLabel(root, text="Inserisci il luogo di destinazione:", font = ("Arial", 14))
+label_end.pack(pady = 1)
+entry_end = ctk.CTkEntry(root)
+entry_end.pack(pady = 1)
+
+def run_algorithm():
+    # Ottieni i valori inseriti dall'utente
+    battery_at_goal_percent = entry_battery.get()
+    location_city = entry_location.get()
+    start_location = entry_start.get()
+    end_location = entry_end.get()
+
+    # Crea un geolocalizzatore
+    geolocator = Nominatim(user_agent = "bsGeocoder")
+
+    # Ottieni le coordinate dei luoghi di partenza e di destinazione
+    start_coordinates = get_coordinates(geolocator, start_location)
+    end_coordinates = get_coordinates(geolocator, end_location)
+
+    # Verifica se i valori inseriti sono validi
+    if start_coordinates is None:
+        tkinter.messagebox.showerror("Errore", "Il luogo di partenza inserito non esiste. Per favore, riprova.")
+        entry_start.delete(0, 'end')
+    if end_coordinates is None:
+        tkinter.messagebox.showerror("Errore", "Il luogo di destinazione inserito non esiste. Per favore, riprova.")
+        entry_end.delete(0, 'end')
+    if location_city is None:
+        tkinter.messagebox.showerror("Errore", "La città o il paese inserito non esiste. Per favore, riprova.")
+        entry_location.delete(0, 'end')
+    if battery_at_goal_percent is None:
+        tkinter.messagebox.showerror("Errore", "La percentuale di batteria minima di arrivo inserita non è valida. Per favore, riprova.")
+        entry_battery.delete(0, 'end')
+
+    # Se tutti i valori sono validi, chiama la funzione main
+    if start_coordinates is not None and end_coordinates is not None and location_city is not None and battery_at_goal_percent is not None:
+        selected_vehicle = vehicle_combobox.get()
+        vehicle_data = electric_vehicle_data[selected_vehicle]
+        battery_capacity = vehicle_data["battery_capacity_kWh"]
+        electric_constant = vehicle_data["electric_constant"]
+        main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant)
+
+button_run = ctk.CTkButton(root, text = "Esegui", command = run_algorithm)
+
+# Posiziona i widget con dello spazio extra
+entry_battery.pack(pady = 1)
+entry_location.pack(pady = 1)
+entry_start.pack(pady = 1)
+entry_end.pack(pady = 1)
+button_run.pack(pady = 15)
+
+# Avvia il loop principale
+root.mainloop()
