@@ -160,7 +160,7 @@ def print_solution(G, solution, electric_vehicle):
         distance += edge.get('length', 10)
     print("Soluzione:", solution)
     print("Percorso trovato con", len(solution), "azioni")
-    print("Batteria rimanente: {:.2f} kWh, Macchina ricaricata {} volte, Energia ricaricata: {} kWh".format(electric_vehicle.battery, electric_vehicle.recharge, float(electric_vehicle.energy_recharged)))    
+    print("Batteria rimanente: {:.2f} kWh, Macchina ricaricata {} volte, Energia ricaricata: {} kWh".format(electric_vehicle.battery, electric_vehicle.recharge, electric_vehicle.energy_recharged))    
     print("Tempo trascorso: {:.2f} ore. Distanza percorsa: {:.2f} km".format(electric_vehicle.travel_time / 3600, distance / 1000))
 
 def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant):
