@@ -74,8 +74,8 @@ class ElectricVehicle:
         else:
             energy_needed = self.min_battery + energy_consumed * 1.2 # margine di sicurezza del 20%
         if self.battery >= self.min_battery and energy_needed + self.battery <= self.battery_capacity:
-            # return self.battery_capacity - self.battery
-            return energy_needed
+            return self.battery_capacity - self.battery
+            # return energy_needed
         else:
             return self.battery_capacity - self.battery
 
@@ -95,51 +95,52 @@ class ElectricVehicle:
         # Ottieni tutte le stazioni di ricarica
         charging_stations = [node for node in graph.nodes() if graph.nodes[node].get('charging_station', False)]
         percent = 1 # Parte dal 100%
-        while percent > 0:
-            percent -= 0.1 # Riduce del 10% ad ogni iterazione
-            distanza_minima = float('inf')
-            best_station = None
-            new_start = start
-            nodo_raggio = goal
-            sw = False
-            distance = speed = energy_consumed = distance_radius = raggio = 0
-            for i, j in solution: # Calcola l'energia consumata nel percorso migliore
-                edge = graph.edges[i, j]
-                distance = edge.get('length', 10)
-                if not sw:
-                    speed = edge.get('speed_kph', 50)
-                    energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
-                    if energy_consumed >= self.battery * percent: # Fino a quando l'energia non raggiunge la % richiesta
-                        new_start = j # Aggiorna il nuovo nodo di partenza
-                        raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed)
-                        print("Raggio: ", raggio)
-                        sw = True
-                if sw:
-                    distance_radius += distance / 1000
-                    print("Distanza: ", distance_radius)
-                    if distance_radius >= raggio:
-                        nodo_raggio = j
-                        break
-
         # while percent > 0:
         #     percent -= 0.1 # Riduce del 10% ad ogni iterazione
         #     distanza_minima = float('inf')
         #     best_station = None
         #     new_start = start
-        #     distance = speed = energy_consumed = 0
+        #     nodo_raggio = goal
+        #     sw = False
+        #     distance = speed = energy_consumed = distance_radius = raggio = 0
         #     for i, j in solution: # Calcola l'energia consumata nel percorso migliore
         #         edge = graph.edges[i, j]
         #         distance = edge.get('length', 10)
-        #         speed = edge.get('speed_kph', 50)
-        #         energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
-        #         if energy_consumed >= self.battery * percent: # Fino a quando l'energia non raggiunge la % richiesta
-        #             new_start = j # Aggiorna il nuovo nodo di partenza
-        #             break
-        #     raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed)
+        #         if not sw:
+        #             speed = edge.get('speed_kph', 50)
+        #             energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
+        #             if energy_consumed >= self.battery * percent: # Fino a quando l'energia non raggiunge la % richiesta
+        #                 new_start = j # Aggiorna il nuovo nodo di partenza
+        #                 raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed)
+        #                 print("Raggio: ", raggio)
+        #                 sw = True
+        #         if sw:
+        #             distance_radius += distance / 1000
+        #             print("Distanza: ", distance_radius)
+        #             if distance_radius >= raggio:
+        #                 nodo_raggio = j
+        #                 break
+
+        while percent > 0:
+            percent -= 0.1 # Riduce del 10% ad ogni iterazione
+            distanza_minima = float('inf')
+            best_station = None
+            new_start = start
+            distance = speed = energy_consumed = 0
+            for i, j in solution: # Calcola l'energia consumata nel percorso migliore
+                edge = graph.edges[i, j]
+                distance = edge.get('length', 10)
+                speed = edge.get('speed_kph', 50)
+                energy_consumed += self.electric_constant * (distance / 1000) * speed / ambient_temperature
+                if energy_consumed >= self.battery * percent: # Fino a quando l'energia non raggiunge la % richiesta
+                    new_start = j # Aggiorna il nuovo nodo di partenza
+                    break
+            raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed)
 
             for station in charging_stations: # Trova la stazione di ricarica migliore
                 start_dist = h.euclidean_distance(new_start, station, graph)
-                goal_dist = h.euclidean_distance(nodo_raggio, station, graph)
+                goal_dist = h.euclidean_distance(goal, station, graph)
+                # goal_dist = h.euclidean_distance(nodo_raggio, station, graph)
                 if start_dist > raggio: # Se la stazione è fuori dal raggio (troppo distante), continua
                     continue
                 if start_dist + goal_dist < distanza_minima:

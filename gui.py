@@ -65,8 +65,8 @@ def generate_osm_graph(location, num_charging_stations = 0):
     G = G.to_undirected() # Converte in un grafo non diretto
 
     all_nodes = list(G.nodes)
-    if num_charging_stations is None or num_charging_stations <= 0: # Imposta il 40% dei nodi come stazioni di ricarica se non viene specificato il numero
-        num_charging_stations = int(len(all_nodes) * 0.4)
+    if num_charging_stations is None or num_charging_stations <= 0: # Imposta il 30% dei nodi come stazioni di ricarica se non viene specificato il numero
+        num_charging_stations = int(len(all_nodes) * 0.3)
     charging_stations = random.sample(all_nodes, num_charging_stations)
     for node in charging_stations:
         G.nodes[node]['charging_station'] = True
