@@ -49,8 +49,8 @@ python3 gui.py
 
 ## UI examples
 
-![GUI preview](https://github.com/PasticciniTeams/EVOPT-Maps/master/example/gui_example.png)
-![MAPS preview](https://github.com/PasticciniTeams/EVOPT-Maps/master/example/maps_example.png)
+![GUI preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/gui_example.png)
+![MAPS preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/maps_example.png)
 
 ## Documentation
 
