@@ -24,7 +24,7 @@ class ElectricVehicle:
         self.travel_time = travel_time
 
     def calculate_energy_consumed(self, solution, graph, ambient_temperature):
-        """Calcola l'energia consumata per un dato percorso.
+        """Calcola l'energia consumata in kWh e il tempo complessivo per un dato percorso.
 
         Args:
             solution (list): Il percorso da calcolare.
@@ -44,7 +44,7 @@ class ElectricVehicle:
         return energy_consumed, time
     
     def update_path(self, solution, energy_consumed, time):
-        """Aggiorna il percorso, il tempo di viaggio e il livello della batteria.
+        """Aggiorna il percorso, il tempo di viaggio e il livello della batteria del veicolo.
 
         Args:
             solution (list): Il percorso da aggiornare.
@@ -80,7 +80,7 @@ class ElectricVehicle:
             return self.battery_capacity - self.battery
 
     def nearest_charging_station(self, graph, start, goal, solution, ambient_temperature):
-        """Trova la stazione di ricarica più vicina.
+        """Trova la stazione di ricarica più vicina in base all'autonomia.
 
         Args:
             graph (Graph): Il grafo che rappresenta il percorso.

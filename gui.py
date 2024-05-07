@@ -108,7 +108,7 @@ def draw_solution_on_map(graph, solution, start_node, end_node, charging_station
 
 def nearest_existing_node(G, lat, lon):
     """
-    Trova il nodo più vicino che esiste nel grafo.
+    Trova il nodo più vicino che esiste nel grafo in base al riferimento inserito.
 
     Args:
         G (networkx.Graph): Il grafo in cui cercare il nodo.
@@ -126,7 +126,7 @@ def nearest_existing_node(G, lat, lon):
 # Funzione per verificare che il luogo inserito esista
 def get_coordinates(geolocator, location):
     """
-    Ottiene le coordinate di una località.
+    Ottiene le coordinate geografiche di una località.
 
     Args:
         geolocator (geopy.geocoders.Nominatim): Il geolocalizzatore da utilizzare per ottenere le coordinate.
@@ -163,7 +163,7 @@ def print_solution(G, solution, electric_vehicle):
     print("Batteria rimanente: {:.2f} kWh, Macchina ricaricata {} volte, Energia ricaricata: {} kWh".format(electric_vehicle.battery, electric_vehicle.recharge, electric_vehicle.energy_recharged))    
     print("Tempo trascorso: {:.2f} ore. Distanza percorsa: {:.2f} km".format(electric_vehicle.travel_time / 3600, distance / 1000))
 
-def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant):
+def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant, temperature):
     """
     Funzione principale del programma.
 
@@ -183,7 +183,7 @@ def main(battery_at_goal_percent, location_city, start_coordinates, end_coordina
     end_node = nearest_existing_node(G, end_coordinates.latitude, end_coordinates.longitude)
 
     start_time = time.time()
-    solution = ev.ElectricVehicle.adaptive_search(electric_vehicle, G, start_node, end_node, 20) # Temperatura impostata a 20
+    solution = ev.ElectricVehicle.adaptive_search(electric_vehicle, G, start_node, end_node, temperature)
     end_time = time.time()
     print("Tempo di ricerca:", end_time - start_time, "secondi")
 
@@ -202,7 +202,7 @@ def change_mode():
 
     Questa funzione cambia la modalità di visualizzazione dell'interfaccia utente tra "dark" e "light" in base al valore della variabile `var`.
     """
-    ctk.set_appearance_mode("dark" if var.get() else "light")
+    ctk.set_appearance_mode("light" if var.get() else "dark")
 
 def run_algorithm():
     """
@@ -215,6 +215,7 @@ def run_algorithm():
     location_city = entry_location.get()
     start_location = entry_start.get()
     end_location = entry_end.get()
+    temperature = int(entry_temperature.get())
     geolocator = Nominatim(user_agent="bsGeocoder")
     start_coordinates = get_coordinates(geolocator, start_location)
     end_coordinates = get_coordinates(geolocator, end_location)
@@ -225,9 +226,10 @@ def run_algorithm():
         vehicle_data = electric_vehicle_data[selected_vehicle]
         battery_capacity = vehicle_data["battery_capacity_kWh"]
         electric_constant = vehicle_data["electric_constant"]
-        main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant)
+        main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant, temperature)
 
 root = ctk.CTk()
+root.title("EVOPT-Maps")
 window_width = 800
 window_height = 600
 screen_width = root.winfo_screenwidth()
@@ -238,38 +240,45 @@ root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
 root.resizable(False, False)
 
 var = tk.IntVar()
-checkbutton = ctk.CTkSwitch(root, text="Modalità scura", variable=var, command=change_mode)
+checkbutton = ctk.CTkSwitch(root, text="Aspetto Chiaro", variable=var, command=change_mode)
 checkbutton.pack(anchor='ne', padx=10, pady=10)
 
-welcome_label = ctk.CTkLabel(root, text="Benvenuto nel Path Finder per veicoli elettrici!", font=("Helvetica", 24))
+welcome_label = ctk.CTkLabel(root, text="Benvenuto in EVOPT Maps", font=("Helvetica", 24))
 welcome_label.pack(pady=20)
 
-label_vehicle = ctk.CTkLabel(root, text="Seleziona un veicolo elettrico:", font=("Arial", 14))
+label_vehicle = ctk.CTkLabel(root, text="Seleziona un veicolo elettrico:", font=("Helvetica", 14))
 label_vehicle.pack(pady=2)
 
 vehicle_var = ctk.StringVar(value=list(electric_vehicle_data.keys())[0])
 vehicle_combobox = ctk.CTkComboBox(root, values=list(electric_vehicle_data.keys()), variable=vehicle_var)
 vehicle_combobox.pack(pady=1)
 
-label_battery = ctk.CTkLabel(root, text="Inserisci la percentuale di batteria minima di arrivo:", font=("Arial", 14))
+label_battery = ctk.CTkLabel(root, text="Inserisci la percentuale di batteria minima di arrivo:", font=("Helvetica", 14))
 label_battery.pack(pady=1)
 entry_battery = ctk.CTkEntry(root)
 entry_battery.pack(pady=1)
 
-label_location = ctk.CTkLabel(root, text="Inserisci la città o il paese:", font=("Arial", 14))
+label_location = ctk.CTkLabel(root, text="Inserisci la città o il paese:", font=("Helvetica", 14))
 label_location.pack(pady=1)
 entry_location = ctk.CTkEntry(root)
 entry_location.pack(pady=1)
 
-label_start = ctk.CTkLabel(root, text="Inserisci il luogo di partenza:", font=("Arial", 14))
+label_start = ctk.CTkLabel(root, text="Inserisci il luogo di partenza:", font=("Helvetica", 14))
 label_start.pack(pady=1)
 entry_start = ctk.CTkEntry(root)
 entry_start.pack(pady=1)
 
-label_end = ctk.CTkLabel(root, text="Inserisci il luogo di destinazione:", font=("Arial", 14))
+label_end = ctk.CTkLabel(root, text="Inserisci il luogo di destinazione:", font=("Helvetica", 14))
 label_end.pack(pady=1)
 entry_end = ctk.CTkEntry(root)
 entry_end.pack(pady=1)
+
+label_temperature = ctk.CTkLabel(root, text="temp°C:", font=("Helvetica", 14))
+label_temperature.place(x=158, y=112)
+entry_temperature = ctk.CTkEntry(root)
+entry_temperature.insert(0, "20")
+entry_temperature.place(x=158, y=142)
+entry_temperature.configure(font=("Helvetica", 14), width=35)
 
 button_run = ctk.CTkButton(root, text="Esegui", command=run_algorithm)
 button_run.pack(pady=15)

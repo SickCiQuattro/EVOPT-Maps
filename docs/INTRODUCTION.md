@@ -1,10 +1,10 @@
-# ElectricRecharge
+# EVOPT-Maps
 
-Electric Recharge is a project developed as a university assignment for the "Intelligent Systems" course. The project leverages the osmnx library to implement real-world streets and simulate the journey of an electric vehicle.
+EVOPT Maps is a project developed as a university assignment for the "Intelligent Systems" course. The project leverages the osmnx library to implement real-world streets and simulate the journey of an electric vehicle.
 
 ## Introduction
 
-ElectricRecharge aims to develop a system for electric vehicle charging. It provides a user-friendly interface for users to automatically locate and reserve charging stations.
+EVOPT Maps aims to develop a system for electric vehicle charging. It provides a user-friendly interface for users to automatically locate and reserve charging stations.
 
 ## Features
 
@@ -14,12 +14,12 @@ ElectricRecharge aims to develop a system for electric vehicle charging. It prov
 
 ## Installation
 
-To install and run the ElectricRecharge project, follow these steps:
+To install and run the EVOPT-Maps project, follow these steps:
 
 1. Clone the repository: 
 
 ```bash
-git clone https://github.com/PasticciniTeams/ElectricRecharge.git
+git clone https://github.com/PasticciniTeams/EVOPT-Maps.git
 ```
 
 2. Install the required dependencies: 

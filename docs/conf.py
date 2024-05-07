@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'Electric Recharge'
-author = 'PasticciniTeams'
+project = 'EVOPT-Maps'
+author = 'PasticciniTeams (Camossi Filippo - Cioli Daniele)'
 
 
 # -- General configuration ---------------------------------------------------
