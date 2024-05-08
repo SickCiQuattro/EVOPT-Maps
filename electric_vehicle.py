@@ -92,11 +92,9 @@ class ElectricVehicle:
             energy_needed = self.min_battery + energy_consumed * 1.1 # margine di sicurezza del 10%
 
         if self.battery >= self.min_battery and energy_needed + self.battery <= self.battery_capacity:
-            print("Energia necessaria: ", energy_needed)
             # return self.battery_capacity - self.battery
             return energy_needed
         else:
-            print("Energia totale necessaria: ", energy_needed)
             return self.battery_capacity - self.battery
 
     def nearest_charging_station(self, graph, start, goal, solution, ambient_temperature):
@@ -137,18 +135,15 @@ class ElectricVehicle:
                     if energy_consumed >= self.battery * percent: # Fino a quando l'energia non raggiunge la % richiesta
                         new_start = j # Aggiorna il nuovo nodo di partenza
                         raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed * speed_tot / count)
-                        print("Raggio: ", raggio)
                         sw = True
                 if sw: # Calcola la distanza dal nuovo nodo di partenza al nodo in solution massimo nell'ampiezza del raggio
                     distance_radius += distance / 1000
-                    print("Distanza: ", distance_radius)
                     if distance_radius >= raggio:
                         nodo_raggio = j
                         break
 
         # while percent > 0.2:
         #     percent -= 0.1 # Riduce del 10% ad ogni iterazione
-        #     print("Percentuale: ", percent)
         #     distanza_minima = float('inf')
         #     best_station = None
         #     new_start = start
@@ -164,7 +159,6 @@ class ElectricVehicle:
         #             new_start = j # Aggiorna il nuovo nodo di partenza
         #             break
         #     raggio = abs(self.battery - energy_consumed) * ambient_temperature / (self.electric_constant * speed_tot / count)
-        #     print("Raggio: ", raggio)
 
             for station in charging_stations: # Trova la stazione di ricarica migliore
                 start_dist = h.euclidean_distance(new_start, station, graph) # come differenza tra il nuovo nodo di partenza e la stazione
@@ -173,7 +167,6 @@ class ElectricVehicle:
                 if start_dist > raggio: # Se la stazione è fuori dal raggio (troppo distante), continua
                     continue
                 if start_dist + goal_dist < distanza_minima:
-                    print("ci entri?")
                     distanza_minima = start_dist + goal_dist
                     best_station = station
             if best_station is None:
@@ -187,7 +180,6 @@ class ElectricVehicle:
             time = 0
             energy_consumed, time = self.calculate_energy_consumed(solution_charging, graph, ambient_temperature)
             if energy_consumed >= self.battery:
-                print("non hai mai abbastanza energia")
                 continue
             return best_station, solution_charging, energy_consumed, time
         return None, None, None, None
