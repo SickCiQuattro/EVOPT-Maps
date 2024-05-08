@@ -34,7 +34,7 @@ electric_vehicle_data = {
     },
     "Renault Twizy": {
         "battery_capacity_kWh": 6.1,
-        "electric_constant": 0.07
+        "electric_constant": 0.1
     },
     "Renault Twingo Electric": {
         "battery_capacity_kWh": 22,
