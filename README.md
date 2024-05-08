@@ -70,6 +70,10 @@ The documentation is available [here](https://raw.githack.com/PasticciniTeams/EV
 - [Camossi Filippo](https://github.com/SickCiQuattro)
 - [Cioli Daniele](https://github.com/Profect99)
 
+## Note
+
+[This file](https://github.com/PasticciniTeams/EVOPT-Maps/blob/old-algorithm/Search/electric_vehicle.py), originating from a previous branch, illustrates a modified version of the old A* based search algorithm 
+
 ## License
 
 All resources used within the project are free license!

@@ -22,7 +22,7 @@ Il modulo dipende dai moduli 'folium', 'osmnx', 'random', 'time', 'electric_vehi
 Variabili:
     electric_vehicle_data (dict): Un dizionario che mappa i nomi dei modelli di veicoli elettrici alle loro specifiche.
 """
-
+# electric constant = (energia[kW] * temperatura[°C]) / (distanza[km] * velocità[km/h]) # la temperatura è un problema, me ne sono accorto un po' tardi
 electric_vehicle_data = {
     "Tesla Model 3 Standard Range Plus": {
         "battery_capacity_kWh": 54,
@@ -229,7 +229,7 @@ def run_algorithm():
     location_city = entry_location.get()
     start_location = entry_start.get()
     end_location = entry_end.get()
-    temperature = int(entry_temperature.get())
+    temperature = max(int(entry_temperature.get()), 1) # Soluzione tampone perchè mi sono reso conto di questa prblematica 5 minuti prima della presentazione
     geolocator = Nominatim(user_agent="bsGeocoder")
     start_coordinates = get_coordinates(geolocator, start_location)
     end_coordinates = get_coordinates(geolocator, end_location)
