@@ -1,16 +1,38 @@
 from search_algorithm import SearchAlgorithm, Node
 from queue import PriorityQueue
-"""A* search algorithm implementation."""
+"""
+Implementazione dell'algoritmo di ricerca A*.
+
+Questo modulo fornisce una implementazione dell'algoritmo di ricerca A*.
+Include una classe `AstarNode` per rappresentare i nodi nell'algoritmo A* e una classe `AStar` per l'algoritmo stesso.
+
+Esempio di utilizzo:
+
+```python
+from ASTAR import AStar, AstarNode
+
+# Definisci il tuo grafo, la tua euristica e il tuo problema
+graph = ...
+heuristic = ...
+problem = ...
+
+# Crea un'istanza dell'algoritmo A*
+astar = AStar(graph, heuristic)
+
+# Risolvi il problema
+solution = astar.solve(problem)
+"""
 
 class AstarNode(Node):
-    """Nodo per l'algoritmo A*.
+    """
+    Nodo per l'algoritmo A*.
 
     Args:
-        state: Lo stato del nodo.
-        parent: Il nodo genitore.
-        action: L'azione che ha portato a questo nodo.
-        g: Il costo per raggiungere questo nodo.
-        h: L'euristica per questo nodo.
+        state (object): Lo stato del nodo.
+        parent (AstarNode, optional): Il nodo genitore. Default è None.
+        action (object, optional): L'azione che ha portato a questo nodo. Default è None.
+        g (int or float, optional): Il costo per raggiungere questo nodo. Default è 0.
+        h (int or float, optional): L'euristica per questo nodo. Default è 0.
     """
     def __init__(self, state, parent = None, action = None, g = 0, h = 0): # Costruttore
         super().__init__(state, parent, action, g)
@@ -20,12 +42,13 @@ class AstarNode(Node):
         return self.g + self.h < other.g + other.h
 
 class AStar(SearchAlgorithm):
-    """A* search algorithm.
+    """
+    Implementazione dell'algoritmo di ricerca A*.
 
     Args:
-        graph: Il grafo su cui eseguire l'algoritmo.
-        heuristic: La funzione euristica da utilizzare.
-        view: Se True, visualizza l'output dell'algoritmo.
+        graph (object): Il grafo su cui eseguire l'algoritmo.
+        heuristic (function): La funzione euristica da utilizzare.
+        view (bool, optional): Se True, visualizza l'output dell'algoritmo. Default è False.
     """
     def __init__(self, graph, heuristic, view = False):
         self.graph = graph
@@ -33,13 +56,14 @@ class AStar(SearchAlgorithm):
         super().__init__(view)
 
     def solve(self, problem):
-        """Risolve il problema utilizzando l'algoritmo A*.
+        """
+        Risolve il problema utilizzando l'algoritmo A*.
 
         Args:
-            problem: Il problema da risolvere.
+            problem (object): Il problema da risolvere.
 
         Returns:
-            La soluzione al problema, se esiste. Altrimenti, None.
+            object: La soluzione al problema, se esiste. Altrimenti, None.
         """
         reached = set() # Insieme degli stati raggiunti
         frontier = PriorityQueue() # Coda di priorità

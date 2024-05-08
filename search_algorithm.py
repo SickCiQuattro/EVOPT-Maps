@@ -1,5 +1,8 @@
 class Node:
-    """Rappresenta un nodo in un algoritmo di ricerca.
+    """
+    Rappresenta un nodo in un algoritmo di ricerca.
+
+    Ogni nodo ha uno stato, un nodo genitore, un'azione che ha portato a questo stato e un costo del percorso per arrivare a questo nodo.
 
     Args:
         state (any): Lo stato corrente del nodo.
@@ -14,7 +17,10 @@ class Node:
         self.g = g
 
 class SearchAlgorithm:
-    """Classe base per un algoritmo di ricerca.
+    """
+    Classe base per un algoritmo di ricerca.
+
+    Questa classe definisce l'interfaccia comune per tutti gli algoritmi di ricerca. Gli algoritmi specifici dovrebbero estendere questa classe e implementare il metodo `solve`.
 
     Args:
         view (bool, optional): Se True, visualizza l'output dell'algoritmo. Default a False.
@@ -25,7 +31,8 @@ class SearchAlgorithm:
         self.view = view # Visualizzazione
 
     def solve(self, problem):
-        """Risolve il problema di ricerca.
+        """
+        Risolve il problema di ricerca.
 
         Questo metodo dovrebbe essere implementato dalle sottoclassi.
 
@@ -38,7 +45,10 @@ class SearchAlgorithm:
         raise NotImplementedError("This method should be implemented by subclasses.")
 
     def update_expanded(self, state):
-        """Aggiorna il numero di nodi espansi.
+        """
+        Aggiorna il numero di nodi espansi.
+
+        Aggiunge lo stato del nodo all'insieme degli stati espansi e incrementa il conteggio dei nodi espansi.
 
         Args:
             state (any): Lo stato del nodo da aggiungere all'insieme degli stati espansi.
@@ -48,19 +58,26 @@ class SearchAlgorithm:
         self.expanded += 1
 
     def reset_expanded(self):
-        """Resetta il numero di nodi espansi."""
+        """
+        Resetta il numero di nodi espansi.
+
+        Svuota l'insieme degli stati espansi e azzera il conteggio dei nodi espansi.
+        """
         if self.view:
             self.expanded_states = set()
         self.expanded = 0
 
     def extract_solution(self, node):
-        """Estrae la soluzione a partire da un nodo.
+        """
+        Estrae la soluzione a partire da un nodo.
+
+        Questo metodo dovrebbe essere implementato dalle sottoclassi.
 
         Args:
-            node (Node): Il nodo da cui estrarre la soluzione.
+            node (Node): Il nodo finale da cui estrarre la soluzione.
 
-        Returns:
-            Una lista delle azioni che portano alla soluzione.
+        Raises:
+            NotImplementedError: Se il metodo non è stato implementato dalla sottoclasse.
         """
         solution = []
         while node.parent is not None:

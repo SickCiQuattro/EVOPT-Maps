@@ -1,27 +1,39 @@
 class SearchProblem:
-    """Classe per risolvere un problema di ricerca.
+    """
+    Classe per definire e risolvere un problema di ricerca generico.
 
-    Questa classe definisce un problema di ricerca generico.
+    Questa classe rappresenta un problema di ricerca, definito da un nodo iniziale, un nodo obiettivo e un grafo su cui eseguire la ricerca.
 
     Args:
-        init (int): Il nodo iniziale.
-        goal (int): Il nodo obiettivo.
+        init (int): L'ID del nodo iniziale.
+        goal (int): L'ID del nodo obiettivo.
         graph (networkx.classes.multidigraph.MultiDiGraph): Il grafo su cui eseguire la ricerca.
     """
 
     def __init__(self, init, goal, graph):
+        """
+        Inizializza un nuovo problema di ricerca.
+
+        Args:
+            init (int): L'ID del nodo iniziale.
+            goal (int): L'ID del nodo obiettivo.
+            graph (networkx.classes.multidigraph.MultiDiGraph): Il grafo su cui eseguire la ricerca.
+        """
         self.init = init
         self.goal = goal
         self.graph = graph
 
     def getSuccessors(self, state):
-        """Restituisce i successori di uno stato.
+        """
+        Restituisce i successori di uno stato.
+
+        Per ogni vicino dello stato, calcola l'azione, l'energia consumata e il tempo impiegato per raggiungere il vicino.
 
         Args:
-            state: Lo stato di cui ottenere i successori.
+            state (int): L'ID del nodo di cui ottenere i successori.
 
         Returns:
-            Un insieme di tuple, ognuna delle quali contiene un'azione, un successore, l'energia consumata per raggiungere il successore e il tempo impiegato.
+            set: Un insieme di tuple, ognuna delle quali contiene un'azione, un successore, l'energia consumata per raggiungere il successore e il tempo impiegato.
         """
         successors = set()
         for neighbor in self.graph.neighbors(state):
@@ -35,21 +47,23 @@ class SearchProblem:
         return successors
     
     def isGoal(self, state):
-        """Verifica se uno stato è l'obiettivo, senza considerare il livello della batteria.
+        """
+        Verifica se uno stato è l'obiettivo.
 
         Args:
-            state: Lo stato da verificare.
+            state (int): L'ID del nodo da verificare.
 
         Returns:
-            True se lo stato è l'obiettivo, altrimenti False.
+            bool: True se lo stato è l'obiettivo, altrimenti False.
         """
         return state == self.goal
 
     def is_charging_station(self, state, charging_stations):
-        """Verifica se uno stato è una stazione di ricarica.
+        """
+        Verifica se uno stato è una stazione di ricarica.
 
         Args:
-            state (int): Il nodo da verificare.
+            state (int): L'ID del nodo da verificare.
             charging_stations (list): La lista delle stazioni di ricarica.
 
         Returns:

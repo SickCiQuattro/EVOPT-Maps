@@ -1,7 +1,7 @@
-.. Electric Recharge Resolver documentation master file, created by
+.. EVOPT-Maps Resolver documentation master file, created by
    sphinx-quickstart
 
-Welcome to Electric Recharge's documentation!
+Welcome to EVOPT Maps's documentation!
 ============================================
 
 .. include:: ./INTRODUCTION.md
@@ -13,7 +13,6 @@ Welcome to Electric Recharge's documentation!
    :hidden:
 
    getting_started
-   examples
    api_reference
 
 Indices and tables
@@ -21,4 +20,5 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`modindex`
+
 .. * :ref:`search`

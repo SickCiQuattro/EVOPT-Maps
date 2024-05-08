@@ -1,28 +1,36 @@
 import math
 import osmnx as ox
+"""
+Modulo heuristics.py
+
+Questo modulo fornisce diverse funzioni euristiche utilizzate per calcolare distanze e tempi tra nodi in un grafo. 
+Le funzioni includono il calcolo della distanza euclidea, un'euristica basata sul tempo, il percorso più breve utilizzando l'algoritmo di Dijkstra e la distanza haversine.
+"""
 
 def euclidean_distance(node_a, node_b, graph):
-    """Calcola la distanza euclidea tra due nodi.
+    """
+    Calcola la distanza euclidea tra due nodi in un grafo.
 
     Args:
-        node_a (int): Il primo nodo.
-        node_b (int): Il secondo nodo.
-        graph (Graph): Il grafo che contiene i nodi.
+        node_a (int): L'ID del primo nodo.
+        node_b (int): L'ID del secondo nodo.
+        graph (networkx.Graph): Il grafo che contiene i nodi.
 
     Returns:
-        float: La distanza euclidea tra i due nodi.
+        float: La distanza euclidea tra i due nodi in chilometri.
     """
     x1, y1 = graph.nodes[node_a]['x'], graph.nodes[node_a]['y'] # coordinate geografiche deciamli del nodo_a
     x2, y2 = graph.nodes[node_b]['x'], graph.nodes[node_b]['y'] # coordinate geografiche deciamli del nodo_b
     return haversine_distance(y1, x1, y2, x2)
 
 def time_based_heuristic(node_a, node_b, graph):
-    """Calcola un'euristica basata sul tempo tra due nodi.
+    """
+    Calcola un'euristica basata sul tempo tra due nodi in un grafo.
 
     Args:
-        node_a (int): Il primo nodo.
-        node_b (int): Il secondo nodo.
-        graph (Graph): Il grafo che contiene i nodi.
+        node_a (int): L'ID del primo nodo.
+        node_b (int): L'ID del secondo nodo.
+        graph (networkx.Graph): Il grafo che contiene i nodi.
 
     Returns:
         float: L'euristica basata sul tempo tra i due nodi in ore.
@@ -36,12 +44,13 @@ def time_based_heuristic(node_a, node_b, graph):
 
 
 def shortest_destination(node_a, node_b, graph):
-    """Trova il percorso più breve tra due nodi utilizzando l'algoritmo di Dijkstra.
+    """
+    Trova il percorso più breve in termini di tempo tra due nodi utilizzando l'algoritmo di Dijkstra.
 
     Args:
-        node_a (int): Il nodo di partenza.
-        node_b (int): Il nodo di arrivo.
-        graph (Graph): Il grafo che contiene i nodi.
+        node_a (int): L'ID del nodo di partenza.
+        node_b (int): L'ID del nodo di arrivo.
+        graph (networkx.Graph): Il grafo che contiene i nodi.
 
     Returns:
         float: Il costo del percorso più breve tra i due nodi in ore.
@@ -54,7 +63,8 @@ def shortest_destination(node_a, node_b, graph):
     return cost / 3600
 
 def haversine_distance(lat1, lon1, lat2, lon2):
-    """Calcola la distanza haversine tra due punti geografici.
+    """
+    Calcola la distanza haversine tra due punti geografici.
 
     Args:
         lat1 (float): La latitudine del primo punto.
@@ -63,7 +73,7 @@ def haversine_distance(lat1, lon1, lat2, lon2):
         lon2 (float): La longitudine del secondo punto.
 
     Returns:
-        float: La distanza haversine in km tra i due punti.
+        float: La distanza haversine tra i due punti in chilometri.
     """
     R = 6371.0 # Raggio della Terra in km
 
@@ -84,7 +94,8 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return R * c # Distanza in km
     
 def blind(start, goal) -> int:
-    """Una funzione euristica cieca che restituisce sempre 0.
+    """
+    Una funzione euristica cieca che restituisce sempre 0.
 
     Args:
         start (int): Il nodo di partenza.

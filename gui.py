@@ -12,11 +12,15 @@ from geopy.exc import GeocoderTimedOut
 import tkinter as tk
 import customtkinter as ctk
 import tkinter.messagebox
-
 """
-Modulo per la simulazione di un veicolo elettrico che si muove in una rete stradale.
+Questo modulo fornisce un'interfaccia grafica per la simulazione di un veicolo elettrico che si muove in una rete stradale.
 
-Questo modulo utilizza OpenStreetMap per generare la rete stradale e simula il movimento di un veicolo elettrico attraverso di essa.
+Il modulo utilizza OpenStreetMap per generare la rete stradale e simula il movimento di un veicolo elettrico attraverso di essa. Fornisce anche un'interfaccia grafica per visualizzare la simulazione e interagire con essa.
+
+Il modulo dipende dai moduli 'folium', 'osmnx', 'random', 'time', 'electric_vehicle', 'numpy', 'webbrowser', 'folium.plugins', 'geopy.geocoders', 'sklearn.neighbors', 'geopy.exc', 'tkinter', 'customtkinter' e 'tkinter.messagebox' per funzionare correttamente.
+
+Variabili:
+    electric_vehicle_data (dict): Un dizionario che mappa i nomi dei modelli di veicoli elettrici alle loro specifiche.
 """
 
 electric_vehicle_data = {
@@ -44,17 +48,18 @@ electric_vehicle_data = {
 
 def generate_osm_graph(location, num_charging_stations = 0):
     """
-    Genera un grafo da OpenStreetMap.
+    Genera un grafo stradale da OpenStreetMap.
 
     Questa funzione scarica i dati della rete stradale da OpenStreetMap e li converte in un grafo NetworkX. Aggiunge anche le velocità degli archi,
-    i tempi di percorrenza e le lunghezze degli archi al grafo.
+    i tempi di percorrenza e le lunghezze degli archi al grafo. Se non viene specificato un numero di stazioni di ricarica, il 30% dei nodi viene impostato come stazioni di ricarica.
 
     Args:
         location (str): La località da cui scaricare i dati della rete stradale.
-        num_charging_stations (int, optional): Il numero di stazioni di ricarica da aggiungere al grafo. Default a 0.
+        num_charging_stations (int, optional): Il numero di stazioni di ricarica da aggiungere al grafo. Default a None.
 
     Returns:
         ox.Graph: Il grafo della rete stradale.
+        list: Una lista degli indici delle stazioni di ricarica nel grafo.
     """
     # Genera un grafo da OpenStreetMap
     G = ox.graph_from_place(location, network_type = 'drive')  # Scarica i dati della rete stradale da OSM
@@ -74,20 +79,20 @@ def generate_osm_graph(location, num_charging_stations = 0):
 
 def draw_solution_on_map(graph, solution, start_node, end_node, charging_stations):
     """
-    Disegna la soluzione del percorso su una mappa.
+    Disegna la soluzione del percorso su una mappa interattiva.
 
     Questa funzione utilizza la libreria folium per creare una mappa interattiva. Il percorso della soluzione viene disegnato sulla mappa,
     e vengono aggiunti marcatori per il nodo di partenza, il nodo di arrivo e le stazioni di ricarica.
 
     Args:
         graph (networkx.Graph): Il grafo in cui è stato trovato il percorso.
-        solution (list): La soluzione del percorso, come lista di azioni.
+        solution (list): La soluzione del percorso, come lista di coppie di nodi.
         start_node (int): L'indice del nodo di partenza nel grafo.
         end_node (int): L'indice del nodo di arrivo nel grafo.
         charging_stations (list): Una lista degli indici delle stazioni di ricarica nel grafo.
 
     Returns:
-        folium.Map: Una mappa interattiva con il percorso disegnato su di essa.
+        folium.Map: Una mappa interattiva con il percorso disegnato su di essa e marcatori per il nodo di partenza, il nodo di arrivo e le stazioni di ricarica.
     """
     start_node_coordinates = [graph.nodes[start_node]['y'], graph.nodes[start_node]['x']] # Crea una mappa centrata sulla posizione media dei nodi
     m = folium.Map(location=start_node_coordinates,tiles='CartoDB Positron', zoom_start=14) # Crea una mappa con folium
@@ -108,7 +113,9 @@ def draw_solution_on_map(graph, solution, start_node, end_node, charging_station
 
 def nearest_existing_node(G, lat, lon):
     """
-    Trova il nodo più vicino che esiste nel grafo in base al riferimento inserito.
+    Trova il nodo più vicino nel grafo rispetto a un punto di riferimento specificato.
+
+    Questa funzione utilizza un albero di ricerca per trovare il nodo più vicino nel grafo rispetto a un punto di riferimento specificato in termini di latitudine e longitudine.
 
     Args:
         G (networkx.Graph): Il grafo in cui cercare il nodo.
@@ -126,7 +133,9 @@ def nearest_existing_node(G, lat, lon):
 # Funzione per verificare che il luogo inserito esista
 def get_coordinates(geolocator, location):
     """
-    Ottiene le coordinate geografiche di una località.
+    Ottiene le coordinate geografiche di una località utilizzando un geolocalizzatore.
+
+    Questa funzione utilizza un geolocalizzatore per ottenere le coordinate geografiche di una località. Se la località non esiste, la funzione restituisce None.
 
     Args:
         geolocator (geopy.geocoders.Nominatim): Il geolocalizzatore da utilizzare per ottenere le coordinate.
@@ -147,7 +156,9 @@ def get_coordinates(geolocator, location):
 
 def print_solution(G, solution, electric_vehicle):
     """
-    Stampa la soluzione di un percorso con i vari valori del veicolo.
+    Stampa la soluzione di un percorso e le informazioni relative al veicolo elettrico.
+
+    Questa funzione stampa la soluzione di un percorso, il numero di azioni nel percorso, le informazioni sulla batteria del veicolo elettrico, il numero di volte che il veicolo è stato ricaricato, l'energia ricaricata, il tempo di viaggio e la distanza percorsa.
 
     Args:
         G (networkx.Graph): Il grafo in cui è stato trovato il percorso.
@@ -165,7 +176,10 @@ def print_solution(G, solution, electric_vehicle):
 
 def main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant, temperature):
     """
-    Funzione principale del programma.
+    Funzione principale del programma che gestisce la simulazione del percorso di un veicolo elettrico.
+
+    Questa funzione crea un veicolo elettrico, genera un grafo stradale da OpenStreetMap, trova il nodo più vicino alle coordinate di partenza e di arrivo,
+    esegue la ricerca del percorso, stampa il tempo di ricerca e, se esiste una soluzione, stampa la soluzione, disegna la soluzione su una mappa e apre la mappa in un browser web.
 
     Args:
         battery_at_goal_percent (float): La percentuale di batteria desiderata alla fine del percorso.
@@ -202,7 +216,7 @@ def change_mode():
 
     Questa funzione cambia la modalità di visualizzazione dell'interfaccia utente tra "dark" e "light" in base al valore della variabile `var`.
     """
-    ctk.set_appearance_mode("light" if var.get() else "dark")
+    ctk.set_appearance_mode("dark" if var.get() else "light")
 
 def run_algorithm():
     """
@@ -228,8 +242,11 @@ def run_algorithm():
         electric_constant = vehicle_data["electric_constant"]
         main(battery_at_goal_percent, location_city, start_coordinates, end_coordinates, battery_capacity, electric_constant, temperature)
 
+# Creazione della finestra principale
 root = ctk.CTk()
 root.title("EVOPT-Maps")
+
+# Impostazione delle dimensioni e della posizione della finestra
 window_width = 800
 window_height = 600
 screen_width = root.winfo_screenwidth()
@@ -237,50 +254,55 @@ screen_height = root.winfo_screenheight()
 position_top = int(screen_height / 2 - window_height / 2)
 position_left = int(screen_width / 2 - window_width / 2)
 root.geometry(f"{window_width}x{window_height}+{position_left}+{position_top}")
+
+# Impedire il ridimensionamento della finestra
 root.resizable(False, False)
 
+# Creazione del pulsante per cambiare la modalità di visualizzazione
 var = tk.IntVar()
-checkbutton = ctk.CTkSwitch(root, text="Aspetto Chiaro", variable=var, command=change_mode)
+checkbutton = ctk.CTkSwitch(root, text="Tema Scuro", variable=var, command = change_mode)
 checkbutton.pack(anchor='ne', padx=10, pady=10)
 
+# Creazione dei widget per l'interfaccia utente: titolo
 welcome_label = ctk.CTkLabel(root, text="Benvenuto in EVOPT Maps", font=("Helvetica", 24))
 welcome_label.pack(pady=20)
-
+# Creazione dei widget per l'interfaccia utente: veicolo
 label_vehicle = ctk.CTkLabel(root, text="Seleziona un veicolo elettrico:", font=("Helvetica", 14))
 label_vehicle.pack(pady=2)
-
+# Creazione dei widget per l'interfaccia utente: combo box veicolo
 vehicle_var = ctk.StringVar(value=list(electric_vehicle_data.keys())[0])
 vehicle_combobox = ctk.CTkComboBox(root, values=list(electric_vehicle_data.keys()), variable=vehicle_var)
 vehicle_combobox.pack(pady=1)
-
+# Creazione dei widget per l'interfaccia utente: percentuale di batteria
 label_battery = ctk.CTkLabel(root, text="Inserisci la percentuale di batteria minima di arrivo:", font=("Helvetica", 14))
 label_battery.pack(pady=1)
 entry_battery = ctk.CTkEntry(root)
 entry_battery.pack(pady=1)
-
+# Creazione dei widget per l'interfaccia utente: mappa da scaricare
 label_location = ctk.CTkLabel(root, text="Inserisci la città o il paese:", font=("Helvetica", 14))
 label_location.pack(pady=1)
 entry_location = ctk.CTkEntry(root)
 entry_location.pack(pady=1)
-
+# Creazione dei widget per l'interfaccia utente: luogo di partenza
 label_start = ctk.CTkLabel(root, text="Inserisci il luogo di partenza:", font=("Helvetica", 14))
 label_start.pack(pady=1)
 entry_start = ctk.CTkEntry(root)
 entry_start.pack(pady=1)
-
+# Creazione dei widget per l'interfaccia utente: luogo di destinazione
 label_end = ctk.CTkLabel(root, text="Inserisci il luogo di destinazione:", font=("Helvetica", 14))
 label_end.pack(pady=1)
 entry_end = ctk.CTkEntry(root)
 entry_end.pack(pady=1)
-
+# Creazione dei widget per l'interfaccia utente: temperatura
 label_temperature = ctk.CTkLabel(root, text="temp°C:", font=("Helvetica", 14))
 label_temperature.place(x=158, y=112)
 entry_temperature = ctk.CTkEntry(root)
 entry_temperature.insert(0, "20")
 entry_temperature.place(x=158, y=142)
 entry_temperature.configure(font=("Helvetica", 14), width=35)
-
+# Creazione dei widget per l'interfaccia utente: pulsante esegui
 button_run = ctk.CTkButton(root, text="Esegui", command=run_algorithm)
 button_run.pack(pady=15)
 
+# Avvio del loop principale dell'interfaccia utente
 root.mainloop()
