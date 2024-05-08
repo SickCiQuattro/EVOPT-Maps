@@ -51,7 +51,7 @@ def generate_osm_graph(location, num_charging_stations = 0):
     Genera un grafo stradale da OpenStreetMap.
 
     Questa funzione scarica i dati della rete stradale da OpenStreetMap e li converte in un grafo NetworkX. Aggiunge anche le velocità degli archi,
-    i tempi di percorrenza e le lunghezze degli archi al grafo. Se non viene specificato un numero di stazioni di ricarica, il 30% dei nodi viene impostato come stazioni di ricarica.
+    i tempi di percorrenza e le lunghezze degli archi al grafo. Se non viene specificato un numero di stazioni di ricarica, il 10% dei nodi viene impostato come stazioni di ricarica.
 
     Args:
         location (str): La località da cui scaricare i dati della rete stradale.
@@ -70,8 +70,8 @@ def generate_osm_graph(location, num_charging_stations = 0):
     G = G.to_undirected() # Converte in un grafo non diretto
 
     all_nodes = list(G.nodes)
-    if num_charging_stations is None or num_charging_stations <= 0: # Imposta il 30% dei nodi come stazioni di ricarica se non viene specificato il numero
-        num_charging_stations = int(len(all_nodes) * 0.3)
+    if num_charging_stations is None or num_charging_stations <= 0: # Imposta il 10% dei nodi come stazioni di ricarica se non viene specificato il numero
+        num_charging_stations = int(len(all_nodes) * 0.1)
     charging_stations = random.sample(all_nodes, num_charging_stations)
     for node in charging_stations:
         G.nodes[node]['charging_station'] = True
