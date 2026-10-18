@@ -66,7 +66,7 @@ def generate_osm_graph(location, num_charging_stations = 0):
     G = ox.routing.add_edge_speeds(G) # Aggiungi velocità agli archi in km/h 'speed_kph'
     G = ox.routing.add_edge_travel_times(G) # Aggiungi tempi di percorrenza agli archi in secondi s 'travel_time'
     G = ox.distance.add_edge_lengths(G) # Aggiungi lunghezze degli archi in metri m 'length'
-    G = ox.utils_graph.convert.to_digraph(G, weight = "travel_time") # Converte MultiDiGraph in DiGraph
+    G = ox.convert.to_digraph(G, weight = "travel_time") # Converte MultiDiGraph in DiGraph
     G = G.to_undirected() # Converte in un grafo non diretto
 
     all_nodes = list(G.nodes)
