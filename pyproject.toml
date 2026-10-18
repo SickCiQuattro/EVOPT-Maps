@@ -1,0 +1,16 @@
+[project]
+name = "evopt-maps"
+version = "0.1.0"
+description = "Routing per veicoli elettrici con soste di ricarica su mappe OpenStreetMap"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "osmnx>=2.1",
+    "networkx>=3.4",
+    "numpy>=2.2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8"]
+# GUI desktop originale, sostituita dall'interfaccia web
+legacy-gui = ["customtkinter>=5", "folium>=0.19", "geopy>=2.4", "scikit-learn>=1.6"]
