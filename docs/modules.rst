@@ -11,4 +11,3 @@ ElectricRecharge
    path_finding
    search_algorithm
    search_problem
-   tempCodeRunnerFile
