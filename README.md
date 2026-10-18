@@ -14,45 +14,27 @@ The search algorithm was chosen for several reasons. Firstly, it allows for the 
 - Automates the process of searching and locating charging stations.
 - Allows users to specify the desired battery percentage at the end of the journey.
 
-## Installation
+## Stato del progetto
 
-Follow these steps to install and run the EVOPT-Maps project:
+Il vecchio codice (A* + GUI tkinter) è nel branch `legacy`. `main` è in riscrittura: nucleo di routing in `evopt/`, interfaccia web in arrivo.
 
-1. Clone the repository: 
-
-```bash
-git clone https://github.com/PasticciniTeams/EVOPT-Maps.git
-```
-
-2. Install the required dependencies: 
+## Setup
 
 ```bash
-pip3 install folium
-pip3 install osmnx
-pip3 install numpy
-pip3 install geopy
-pip3 install scikit-learn
-pip3 install customtkinter
-```
-or
-
-```bash
-pip3 install folium osmnx numpy geopy scikit-learn customtkinter
+uv sync
+uv run pytest
 ```
 
-3. Run the program: 
+## Uso (libreria)
 
-```bash
-python3 gui.py
+```python
+from evopt.graph import load_graph, nearest_node
+from evopt.router import plan_route
+from evopt.vehicle import VEHICLES
+
+G = load_graph("Pieve Emanuele, Italy")  # le stazioni sono nodi con attributo 'charger_kw'
+route = plan_route(G, start, goal, VEHICLES["Fiat 500e"], temp_c=5, min_soc=0.1)
 ```
-
-## Usage
-
-1. Clone the repository to your local machine.
-2. Install the necessary dependencies.
-3. Run the program and specify the parameters for the vehicle and location.
-4. The program will then download the map and find the best route for your vehicle.
-5. Open path.html to view the map with the optimal route.
 
 ## UI examples
 
@@ -60,10 +42,6 @@ Here are some previews of the user interface:
 
 ![GUI preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/gui_example.png)
 ![MAPS preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/maps_example.png)
-
-## Documentation
-
-The documentation is available [here](https://raw.githack.com/PasticciniTeams/EVOPT-Maps/main/docs/_build/html/index.html).
 
 ## Contributors
 
