@@ -1,6 +1,4 @@
-import heapq
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class NoRouteError(Exception):
@@ -14,107 +12,12 @@ class Route:
     distance_m: float
     charges: list  # (nodo, kWh caricati, secondi, carica prima, carica dopo)
     arrival_soc: float
-
-
-def _legs(G, src, targets, vehicle, temp_c):
-    """Dijkstra sul tempo da `src`, potato oltre la capacità della batteria.
-
-    shortcut: l'energia è quella del percorso più veloce, non del più efficiente;
-    upgrade con un'etichetta Pareto (tempo, energia) per nodo.
-    """
-    best = {src: (0.0, 0.0, 0.0)}  # nodo -> (tempo, kWh, metri)
-    prev = {}
-    heap = [(0.0, src)]
-    done = set()
-    while heap:
-        t, u = heapq.heappop(heap)
-        if u in done:
-            continue
-        done.add(u)
-        _, kwh, dist = best[u]
-        for _, v, d in G.out_edges(u, data=True):
-            nt = t + d["travel_time"]
-            if v in done or (v in best and best[v][0] <= nt):
-                continue
-            nk = kwh + vehicle.edge_energy_kwh(d["length"], d["speed_kph"], d["travel_time"], temp_c)
-            if nk > vehicle.capacity_kwh:
-                continue
-            best[v] = (nt, nk, dist + d["length"])
-            prev[v] = u
-            heapq.heappush(heap, (nt, v))
-    legs = {}
-    for dst in targets:
-        if dst == src or dst not in best:
-            continue
-        path = [dst]
-        while path[-1] != src:
-            path.append(prev[path[-1]])
-        legs[dst] = (*best[dst], path[::-1])
-    return legs
+    stats: dict = field(default_factory=dict)  # algoritmo, stati espansi, millisecondi...
+    history: list = field(default_factory=list)  # giri di ARA*: eps, bound, tempo
 
 
 def plan_route(G, start, goal, vehicle, *, temp_c=20, start_soc=1.0, min_soc=0.1, steps=100):
-    """Percorso più veloce da `start` a `goal` con soste alle stazioni (nodi con attributo 'charger_kw').
+    """Percorso più veloce con soste (A* sul grafo ridotto). Per scegliere l'algoritmo usa `Planner`."""
+    from evopt.planner import Planner
 
-    Ricerca di Dijkstra su (nodo, livello di carica) sul grafo ridotto di partenza, arrivo e stazioni.
-    La carica è discretizzata in `steps` livelli e i consumi sono arrotondati per eccesso.
-    """
-    stations = {n for n, d in G.nodes(data=True) if "charger_kw" in d}
-    nodes = [start, goal, *(s for s in stations if s not in (start, goal))]
-    unit = vehicle.capacity_kwh / steps
-    min_level = math.ceil(min_soc * steps)
-
-    # nodo -> [(destinazione, secondi, livelli consumati, metri, percorso)]
-    out = {}
-    for a in nodes:
-        if a == goal:
-            continue
-        legs = _legs(G, a, nodes, vehicle, temp_c)
-        out[a] = [(b, t, math.ceil(k / unit), m, p) for b, (t, k, m, p) in legs.items()]
-
-    s0 = (start, int(start_soc * steps))
-    dist = {s0: 0.0}
-    prev = {}
-    heap = [(0.0, s0)]
-    while heap:
-        t, state = heapq.heappop(heap)
-        if t > dist[state]:
-            continue
-        node, level = state
-        if node == goal:
-            return _build(state, t, prev, unit, steps, vehicle.capacity_kwh)
-        if node in stations and level < steps:
-            secs = unit / min(vehicle.max_charge_kw, G.nodes[node]["charger_kw"]) * 3600
-            _relax(dist, prev, heap, state, (node, level + 1), t + secs, ("charge", secs))
-        for b, secs, need, meters, path in out.get(node, ()):
-            if level - need >= min_level:
-                _relax(dist, prev, heap, state, (b, level - need), t + secs, ("drive", path, meters))
-    raise NoRouteError("nessun percorso con la batteria e le stazioni disponibili")
-
-
-def _relax(dist, prev, heap, state, nxt, t, move):
-    if t < dist.get(nxt, math.inf):
-        dist[nxt] = t
-        prev[nxt] = (state, move)
-        heapq.heappush(heap, (t, nxt))
-
-
-def _build(state, time_s, prev, unit, steps, capacity_kwh):
-    arrival_soc = state[1] / steps
-    moves = []
-    while state in prev:
-        state, move = prev[state]
-        moves.append((state, move))
-    path, distance, charges = [], 0.0, []
-    for (node, level), move in reversed(moves):
-        if move[0] == "drive":
-            path += move[1] if not path else move[1][1:]
-            distance += move[2]
-            continue
-        if not charges or charges[-1][0] != node:
-            charges.append([node, 0.0, 0.0, level / steps, level / steps])
-        stop = charges[-1]
-        stop[1] += unit
-        stop[2] += move[1]
-        stop[4] = (level + 1) / steps
-    return Route(path, time_s, distance, [tuple(c) for c in charges], arrival_soc)
+    return Planner(G, vehicle, temp_c, steps).plan(start, goal, start_soc, min_soc, algorithm="astar")
