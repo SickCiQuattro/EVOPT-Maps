@@ -226,6 +226,29 @@ button { font: inherit; font-weight: 700; cursor: pointer; border-radius: 0; }
 .prose ul { padding-left: 24px; }
 .formula { padding: 16px; border: 2px solid var(--ink); font-variant-numeric: tabular-nums; font-size: 1rem; }
 
+/* advanced options, algorithm table */
+.advanced { margin: 0 0 16px; border-top: 1px solid var(--rule); }
+.advanced > summary { padding: 16px 0; font-size: 1rem; font-weight: 700; cursor: pointer; list-style: none; position: relative; }
+.advanced > summary::-webkit-details-marker { display: none; }
+.advanced > summary::after { content: ""; position: absolute; right: 4px; top: 20px; width: 8px; height: 8px; border: solid var(--ink); border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.advanced[open] > summary::after { transform: rotate(-135deg); top: 24px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 400; cursor: pointer; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); }
+.solved { margin: 0 0 24px; font-size: 0.8125rem; color: var(--mute); }
+.insights { margin: 0 0 24px; padding-left: 24px; }
+.insights li { margin-bottom: 8px; max-width: 65ch; }
+.table-wrap { overflow-x: auto; margin-bottom: 40px; }
+.data { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.data th, .data td { padding: 16px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.data thead th { font-size: 0.8125rem; border-bottom: 3px solid var(--ink); white-space: nowrap; }
+.data th[scope="row"] { font-weight: 700; min-width: 240px; }
+.data .sub { display: block; margin-top: 4px; font-size: 0.8125rem; font-weight: 400; color: var(--mute); max-width: 44ch; }
+.data .tag { font-size: 0.8125rem; font-weight: 700; color: var(--line); }
+.data .r { text-align: right; white-space: nowrap; }
+.data tr.best td { font-weight: 700; }
+.algo-list dt { margin-top: 24px; font-weight: 700; }
+.algo-list dd { margin: 4px 0 0; max-width: 65ch; color: var(--mute); }
+
 /* narrow screens: form, map, result stack */
 @media (max-width: 900px) {
   body { grid-template-rows: auto minmax(0, 1fr); }

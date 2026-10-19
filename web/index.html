@@ -17,7 +17,8 @@
     <nav aria-label="Sections">
       <a href="#plan" data-view="plan">Plan</a>
       <a href="#vehicles" data-view="vehicles">Vehicles</a>
-      <a href="#about" data-view="about">About the model</a>
+      <a href="#algorithms" data-view="algorithms">Algorithms</a>
+      <a href="#about" data-view="about">Model</a>
     </nav>
   </header>
 
@@ -88,6 +89,23 @@
               <input id="min-soc" name="min-soc" type="range" min="5" max="50" step="5" value="10">
             </div>
 
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <div class="field">
+                <label for="algorithm">Search algorithm</label>
+                <select id="algorithm" name="algorithm" aria-describedby="algorithm-help"></select>
+                <p id="algorithm-help" class="help"></p>
+              </div>
+              <div class="field">
+                <label for="legs">Energy between chargers</label>
+                <select id="legs" name="legs">
+                  <option value="fastest">Fastest road (quick)</option>
+                  <option value="pareto">Fastest and most efficient roads (slower)</option>
+                </select>
+              </div>
+              <label class="check"><input type="checkbox" id="compare"> Compare all algorithms on this trip</label>
+            </details>
+
             <button type="submit" id="submit" class="primary">Plan route</button>
           </form>
         </details>
@@ -101,6 +119,7 @@
             <div><dt>Distance</dt><dd id="s-dist" class="num"></dd></div>
             <div><dt>Arrive with</dt><dd id="s-arrive" class="num"></dd></div>
           </dl>
+          <p class="solved"><span id="solved-by"></span> <a id="compare-link" href="#algorithms" hidden>Compare algorithms</a></p>
           <ol id="line" class="line" aria-label="Trip stops"></ol>
           <p class="caveat">An estimate, not a navigation. No traffic or hills; stations with no published power are assumed 22 kW. <a href="#about">How the model works</a></p>
         </section>
@@ -127,6 +146,37 @@
       </div>
     </section>
 
+    <!-- ALGORITHMS -->
+    <section id="view-algorithms" class="view page" aria-labelledby="algorithms-title" hidden>
+      <div class="page-in">
+        <h2 id="algorithms-title" tabindex="-1">Algorithms</h2>
+        <p class="lede">The same trip, solved seven ways. Plan a trip with &ldquo;Compare all algorithms&rdquo; ticked under Advanced to see how they differ on your own route.</p>
+        <section id="compare-result" hidden>
+          <h3>Your trip</h3>
+          <ul id="insights" class="insights"></ul>
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th scope="col">Algorithm</th><th scope="col" class="r">Trip</th><th scope="col" class="r">vs best</th><th scope="col" class="r">Stops</th><th scope="col" class="r">States</th><th scope="col" class="r">Search</th></tr></thead>
+              <tbody id="compare-rows"></tbody>
+            </table>
+          </div>
+          <div id="anytime" hidden>
+            <h3>ARA* improving step by step</h3>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col" class="r">Weight</th><th scope="col" class="r">Trip</th><th scope="col" class="r">Guaranteed within</th><th scope="col" class="r">States so far</th></tr></thead>
+                <tbody id="anytime-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section id="compare-empty">
+          <h3>What each one does</h3>
+          <dl id="algo-list" class="algo-list"></dl>
+        </section>
+      </div>
+    </section>
+
     <!-- ABOUT -->
     <section id="view-about" class="view page" aria-labelledby="about-title" hidden>
       <div class="page-in prose">
@@ -135,6 +185,7 @@
 
         <h3>How a trip is planned</h3>
         <p>The roads of the chosen area come from OpenStreetMap. The planner searches for the fastest trip while tracking the battery. It charges only at real stations, only when needed, and only as much as it pays off in time.</p>
+        <p>The search runs over a state made of a place and a battery level, so it can trade a longer charge now against a shorter one later. Several algorithms solve it, from Dijkstra to ARA*; the <a href="#algorithms">Algorithms</a> page compares them on your trip.</p>
 
         <h3>How energy is estimated</h3>
         <p>For every road segment: rolling resistance plus air drag at the segment speed, divided by drivetrain efficiency, plus the power of heating or cooling over the time spent on it.</p>

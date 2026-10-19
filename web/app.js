@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = "evopt:v1";
-const EXAMPLE = { area: "Pieve Emanuele, Italy", start: "Pieve Emanuele", goal: "Siziano", vehicle: "", temp: -10, startSoc: 15, minSoc: 10 };
+const EXAMPLE = { area: "Pieve Emanuele, Italy", start: "Pieve Emanuele", goal: "Siziano", vehicle: "", temp: -10, startSoc: 15, minSoc: 10, algorithm: "astar", legs: "fastest", compare: true };
 const STEPS = [
   { label: "Locating your places", stages: ["locating"] },
   { label: "Road network", stages: ["roads"] },
@@ -18,7 +18,8 @@ const ERROR_TITLES = {
   internal: "Something went wrong",
 };
 
-const state = { vehicles: [], job: 0, timer: 0, started: 0, activeIndex: -1 };
+const VIEWS = ["plan", "vehicles", "algorithms", "about"];
+const state = { vehicles: [], algorithms: [], result: null, job: 0, timer: 0, started: 0, activeIndex: -1 };
 const layers = { route: null, stations: null, stops: [] };
 let map;
 
@@ -67,6 +68,7 @@ function values() {
   return {
     area: $("area").value.trim(), start: $("start").value.trim(), goal: $("goal").value.trim(), vehicle: $("vehicle").value,
     temp: +$("temp").value, startSoc: +$("start-soc").value, minSoc: +$("min-soc").value,
+    algorithm: $("algorithm").value, legs: $("legs").value, compare: $("compare").checked,
   };
 }
 function persist() { save(values()); paintSummary(); }
@@ -78,7 +80,13 @@ function fill(v) {
   $("area").value = v.area ?? ""; $("start").value = v.start ?? ""; $("goal").value = v.goal ?? "";
   if (v.vehicle && state.vehicles.some((x) => x.name === v.vehicle)) $("vehicle").value = v.vehicle;
   $("temp").value = v.temp; $("start-soc").value = v.startSoc; $("min-soc").value = v.minSoc;
-  sliders.forEach(paintSlider); paintSpec(); paintSummary();
+  if (state.algorithms.some((a) => a.id === v.algorithm)) $("algorithm").value = v.algorithm;
+  if (["fastest", "pareto"].includes(v.legs)) $("legs").value = v.legs;
+  $("compare").checked = !!v.compare;
+  sliders.forEach(paintSlider); paintSpec(); paintSummary(); paintAlgorithmHelp();
+}
+function paintAlgorithmHelp() {
+  $("algorithm-help").textContent = state.algorithms.find((a) => a.id === $("algorithm").value)?.summary ?? "";
 }
 function paintSpec() {
   const v = state.vehicles.find((x) => x.name === $("vehicle").value);
@@ -141,7 +149,7 @@ async function plan(e) {
   try {
     const r = await fetch("/api/plan", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ area: v.area, start: v.start, goal: v.goal, vehicle: v.vehicle, temp_c: v.temp, start_soc: v.startSoc / 100, min_soc: v.minSoc / 100 }),
+      body: JSON.stringify({ area: v.area, start: v.start, goal: v.goal, vehicle: v.vehicle, temp_c: v.temp, start_soc: v.startSoc / 100, min_soc: v.minSoc / 100, algorithm: v.algorithm, legs: v.legs, compare: v.compare }),
     });
     if (!r.ok) return fail(id, { code: "internal", message: "Some of the values are not valid. Check the form and try again." });
     await poll(id, (await r.json()).job_id);
@@ -192,6 +200,11 @@ function done(id, res) {
   $("s-dist").textContent = `${Math.round(s.distance_km)} km`;
   $("s-arrive").textContent = pct(s.arrival_soc);
   $("line").replaceChildren(...diagram(res, v));
+  state.result = res;
+  const algo = state.algorithms.find((a) => a.id === res.algorithm)?.name ?? res.algorithm;
+  $("solved-by").textContent = `Solved with ${algo}: ${res.stats.expanded?.toLocaleString("en") ?? "?"} states, ${Math.max(1, Math.round(res.stats.search_ms ?? 0))}\u00a0ms.`;
+  $("compare-link").hidden = !res.comparison;
+  renderAlgorithms(res);
   drawMap(res);
   show("result");
   $("result-title").focus({ preventScroll: true });
@@ -254,6 +267,45 @@ function activate(i, pan) {
   if (pan && layers.stops[i]) map.setView(layers.stops[i].getLatLng(), Math.max(map.getZoom(), 13), { animate: false });
 }
 
+/* ---------- algorithms ---------- */
+const num = (v, d = 0) => v.toLocaleString("en", { minimumFractionDigits: d, maximumFractionDigits: d });
+function insights(rows) {
+  const by = (id) => rows.find((r) => r.algorithm === id);
+  const out = [];
+  const [d, a, w, r, g] = ["dijkstra", "astar_energy", "wastar", "ara", "greedy"].map(by);
+  if (g?.time_min != null && g.gap_pct > 0.05) out.push(`The naive driver needs ${num(g.gap_pct, 1)}\u00a0% more time than the best plan.`);
+  else if (g && g.time_min == null) out.push("The naive driver could not complete this trip.");
+  if (d?.expanded && a?.expanded && a.expanded < d.expanded) out.push(`A* expands ${num((1 - a.expanded / d.expanded) * 100)}\u00a0% fewer states than Dijkstra and finds the same trip.`);
+  if (w?.expanded && d?.expanded && w.expanded < d.expanded) out.push(`Weighted A* expands ${num(d.expanded / w.expanded, 1)}\u00d7 fewer states than Dijkstra and lands ${num(w.gap_pct, 1)}\u00a0% above the best trip.`);
+  if (r?.anytime?.length > 1 && r.anytime[0].expanded < 0.9 * r.anytime.at(-1).expanded) {
+    const first = r.anytime[0], last = r.anytime.at(-1);
+    out.push(`ARA* had a first answer after ${num(first.expanded)} states, ${num(first.expanded / last.expanded * 100)}\u00a0% of the effort of its final proven-optimal one.`);
+  }
+  return out;
+}
+function renderAlgorithms(res) {
+  const rows = res.comparison;
+  $("compare-result").hidden = !rows;
+  $("compare-empty").hidden = !!rows;
+  if (!rows) return;
+  const info = Object.fromEntries(state.algorithms.map((a) => [a.id, a]));
+  $("insights").replaceChildren(...insights(rows).map((t) => h("li", {}, t)));
+  $("compare-rows").replaceChildren(...rows.map((r) => {
+    const chosen = r.algorithm === res.algorithm;
+    const name = h("th", { scope: "row" }, info[r.algorithm]?.name ?? r.algorithm, chosen ? h("span", { class: "tag" }, " selected") : null,
+      h("span", { class: "sub" }, r.note ?? info[r.algorithm]?.summary ?? ""));
+    if (r.time_min == null) return h("tr", {}, name, h("td", { class: "r", colspan: 5 }, "No result"));
+    const gap = r.gap_pct < 0.05 ? "best" : `+${num(r.gap_pct, 1)}\u00a0%`;
+    return h("tr", { class: r.gap_pct < 0.05 ? "best" : "" }, name, h("td", { class: "r num" }, `${num(r.time_min, 2)}\u00a0min`),
+      h("td", { class: "r num" }, gap), h("td", { class: "r num" }, r.stops), h("td", { class: "r num" }, num(r.expanded)), h("td", { class: "r num" }, `${num(r.search_ms, 1)}\u00a0ms`));
+  }));
+  const ara = rows.find((r) => r.algorithm === "ara");
+  $("anytime").hidden = !ara?.anytime;
+  if (ara?.anytime) $("anytime-rows").replaceChildren(...ara.anytime.map((s) => h("tr", {},
+    h("td", { class: "r num" }, `\u00d7${num(s.eps, 1)}`), h("td", { class: "r num" }, `${num(s.time_s / 60, 2)}\u00a0min`),
+    h("td", { class: "r num" }, `${num((s.bound - 1) * 100, 1)}\u00a0%`), h("td", { class: "r num" }, num(s.expanded)))));
+}
+
 /* ---------- vehicles ---------- */
 function renderRoster() {
   const current = $("vehicle").value;
@@ -268,8 +320,8 @@ function renderRoster() {
 
 /* ---------- views ---------- */
 function route(first) {
-  const view = ["plan", "vehicles", "about"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "plan";
-  for (const v of ["plan", "vehicles", "about"]) $(`view-${v}`).hidden = v !== view;
+  const view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "plan";
+  for (const v of VIEWS) $(`view-${v}`).hidden = v !== view;
   document.querySelectorAll("nav a").forEach((a) => (a.dataset.view === view ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
   if (view === "vehicles") renderRoster();
   if (view === "plan") map.invalidateSize();
@@ -284,6 +336,13 @@ async function init() {
   } catch {
     state.vehicles = [];
   }
+  try {
+    state.algorithms = await (await fetch("/api/algorithms")).json();
+  } catch {
+    state.algorithms = [];
+  }
+  $("algorithm").replaceChildren(...state.algorithms.map((a) => h("option", { value: a.id }, a.name)));
+  $("algo-list").replaceChildren(...state.algorithms.flatMap((a) => [h("dt", {}, a.name), h("dd", {}, a.summary)]));
   $("vehicle").replaceChildren(...state.vehicles.map((v) => h("option", { value: v.name }, v.name)));
   const saved = { ...EXAMPLE, ...load() };
   if (!saved.vehicle) saved.vehicle = (state.vehicles.find((v) => v.name.includes("Renault Twizy")) ?? state.vehicles[0] ?? {}).name;
@@ -291,6 +350,7 @@ async function init() {
   sliders.forEach((s) => $(s.id).addEventListener("input", onSlider));
   for (const id of ["area", "start", "goal"]) $(id).addEventListener("input", () => { persist(); $(id).removeAttribute("aria-invalid"); $(`${id}-err`).hidden = true; });
   $("vehicle").addEventListener("change", () => { paintSpec(); persist(); });
+  for (const id of ["algorithm", "legs", "compare"]) $(id).addEventListener("change", () => { paintAlgorithmHelp(); persist(); });
   $("swap").addEventListener("click", () => { const a = $("start").value; $("start").value = $("goal").value; $("goal").value = a; persist(); });
   $("plan-form").addEventListener("submit", plan);
   $("cancel").addEventListener("click", cancel);

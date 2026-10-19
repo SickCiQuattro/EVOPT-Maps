@@ -145,10 +145,16 @@ Rectangles with square corners. The only curve is the station ring: a circle wit
 Track 4px with Line Red fill; thumb is a station ring (24px). The label row shows a live 1.25rem tabular readout.
 
 ### Navigation
-Header tabs, bold 15px. The active tab has a 4px Line Red underline that overlaps the header rule.
+Header tabs, bold 16px. The active tab has a 4px Line Red underline that overlaps the header rule.
 
 ### Trip line (signature)
 A vertical 8px Line Red bar with ringed stations. Start and end are 24px rings; charging stops are 32px numbered rings. Each stop prints arrival charge, minutes charging, charge after, kWh and power. Hover or focus turns the ring and its name red and highlights the same stop on the map.
+
+### Data table
+Used for the algorithm comparison. Full width inside the 960px page column, a 3px ink rule under the header row, 1px hairlines between rows, 16px cell padding, numeric columns right-aligned with tabular figures. The best row is bold; the selected algorithm carries a Line Red "selected" word. Wrapped in a horizontal scroller on narrow screens.
+
+### Advanced disclosure
+A native details element with a hairline above, a bold summary and a drawn chevron. It keeps the algorithm, leg-energy and comparison options out of the way until wanted.
 
 ### Vehicle roster
 Five equal cells with a 3px ink border: name block, two specs, action. The selected cell has a Line Red name block and border.
