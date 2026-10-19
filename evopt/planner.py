@@ -482,6 +482,12 @@ class Planner:
                 options = [b for b in reachable if b not in visited]
                 if not options:
                     raise NoRouteError("the naive driver is stranded")
+                # regola minima di buon senso: non ci si ferma a una colonnina molto più lenta del veicolo
+                # se ce n'è una decente a portata (altrimenti il confronto sarebbe con un uomo di paglia)
+                decent = [
+                    b for b in options if self.G.nodes[b]["charger_kw"] >= 0.5 * self.vehicle.max_charge_kw
+                ]
+                options = decent or options
                 g = self.G.nodes[goal]
                 nxt = min(
                     options, key=lambda b: _hav(self.G.nodes[b]["y"], self.G.nodes[b]["x"], g["y"], g["x"])
