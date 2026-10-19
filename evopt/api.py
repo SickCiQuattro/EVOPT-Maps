@@ -120,7 +120,7 @@ app = FastAPI(title="EVOPT Maps")
 @app.get("/api/vehicles")
 def vehicles():
     return [
-        {"name": n, "capacity_kwh": v.capacity_kwh, "max_charge_kw": v.max_charge_kw}
+        {"name": n, "capacity_kwh": v.capacity_kwh, "max_charge_kw": v.max_charge_kw, "source": v.source}
         for n, v in VEHICLES.items()
     ]
 
