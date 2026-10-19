@@ -103,6 +103,7 @@
                   <option value="pareto">Fastest and most efficient roads (slower)</option>
                 </select>
               </div>
+              <label class="check"><input type="checkbox" id="elevation" checked> Include climbs and descents</label>
               <label class="check"><input type="checkbox" id="compare"> Compare all algorithms on this trip</label>
             </details>
 
@@ -118,10 +119,12 @@
             <div><dt>Charging</dt><dd id="s-charge" class="num"></dd></div>
             <div><dt>Distance</dt><dd id="s-dist" class="num"></dd></div>
             <div><dt>Arrive with</dt><dd id="s-arrive" class="num"></dd></div>
+            <div id="s-climb-box" hidden><dt>Net climb</dt><dd id="s-climb" class="num"></dd></div>
+            <div id="s-high-box" hidden><dt>Highest point</dt><dd id="s-high" class="num"></dd></div>
           </dl>
           <p class="solved"><span id="solved-by"></span> <a id="compare-link" href="#algorithms" hidden>Compare algorithms</a></p>
           <ol id="line" class="line" aria-label="Trip stops"></ol>
-          <p class="caveat">An estimate, not a navigation. No traffic or hills; stations with no published power are assumed 22 kW. <a href="#about">How the model works</a></p>
+          <p class="caveat">An estimate, not a navigation. No traffic. Climbs come from 30 m terrain data, so they are close but not exact. Stations with no published power are estimated or assumed to be 22 kW. <a href="#about">How the model works</a></p>
         </section>
 
         <section id="empty" class="panel empty">
@@ -192,7 +195,7 @@
         <p>The search runs over a state made of a place and a battery level, so it can trade a longer charge now against a shorter one later. Every stop also costs three minutes for plugging in. Several algorithms solve it, from Dijkstra to ARA*; the <a href="#algorithms">Algorithms</a> page compares them on your trip.</p>
 
         <h3>How energy is estimated</h3>
-        <p>For every road segment: rolling resistance plus air drag at the segment speed, divided by drivetrain efficiency, plus the power of heating or cooling over the time spent on it.</p>
+        <p>For every road segment: rolling resistance plus air drag at the segment speed, divided by drivetrain efficiency, plus the energy to climb, less 60% of the energy a descent gives back, plus the power of heating or cooling over the time spent on it.</p>
         <p class="formula">energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + (0.5 kW + 0.1 kW per °C outside 18–24 °C) · time</p>
         <p>Cold and heat therefore cost range. Vehicle figures are approximate values from public data sheets.</p>
 
@@ -201,11 +204,13 @@
           <li>Roads and charging stations: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</li>
           <li>Missing station power and extra stations: <a href="https://openchargemap.org">Open Charge Map</a>, when a key is configured.</li>
           <li>Map tiles: © OpenStreetMap contributors, shown in grey.</li>
+          <li>Elevation: terrain tiles on AWS Open Data (Mapzen, with SRTM and other sources).</li>
         </ul>
 
         <h3>What it does not know</h3>
         <ul>
-          <li>Traffic, road works, hills and braking energy recovery.</li>
+          <li>Traffic and road works.</li>
+          <li>Exact hills: elevation comes from 30 m terrain data and is smoothed. Bridges and tunnels can add noise, so the gross climb is not shown, only the net climb. Going downhill never charges the battery in this model, so descents are on the prudent side.</li>
           <li>Whether a charger is free or working right now.</li>
           <li>Charging slows near full on fast chargers, but only by a simple curve.</li>
           <li>Where OpenStreetMap lacks a station's power it assumes 22 kW.</li>

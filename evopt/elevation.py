@@ -82,7 +82,27 @@ class Dem:
         return {((x0 + i) // SIZE, (y0 + j) // SIZE) for i in (0, 1) for j in (0, 1)}
 
 
-def add_node_elevations(G, cache_dir, fetch=None, zoom=ZOOM, workers=8):
+def smooth(G, passes=3):
+    """Leviga le quote lungo la rete: ogni nodo con almeno due vicini si media con i vicini.
+
+    Il rumore del DEM (ponti e viadotti letti come buche) farebbe pagare salite finte per intero e restituire
+    le discese solo in parte, cioè un consumo in più su strade piatte. Una pendenza costante resta invariata.
+    Gli estremi e i nodi isolati non cambiano (mediarli sposterebbe una rampa).
+    """
+    nbrs = {n: (set(G.successors(n)) | set(G.predecessors(n))) - {n} for n in G}
+    cur = {n: d["elevation"] for n, d in G.nodes(data=True) if "elevation" in d}
+    for _ in range(passes):
+        cur = {
+            n: (e + sum(cur[m] for m in nbrs[n] if m in cur) / len([m for m in nbrs[n] if m in cur])) / 2
+            if len([m for m in nbrs[n] if m in cur]) >= 2
+            else e
+            for n, e in cur.items()
+        }
+    for n, e in cur.items():
+        G.nodes[n]["elevation"] = round(e, 1)
+
+
+def add_node_elevations(G, cache_dir, fetch=None, zoom=ZOOM, workers=8, passes=3):
     """Imposta 'elevation' (m) sui nodi che ne sono privi. Se un tile non si scarica, il grafo resta com'era."""
     todo = [n for n, d in G.nodes(data=True) if "elevation" not in d]
     if not todo:
@@ -96,3 +116,7 @@ def add_node_elevations(G, cache_dir, fetch=None, zoom=ZOOM, workers=8):
     values = {n: round(dem.at(G.nodes[n]["y"], G.nodes[n]["x"]), 1) for n in todo}
     for n, v in values.items():
         G.nodes[n]["elevation"] = v
+    if (
+        passes and len(todo) == G.number_of_nodes()
+    ):  # una rete annotata a metà non si leviga: mescolerebbe fonti
+        smooth(G, passes)
