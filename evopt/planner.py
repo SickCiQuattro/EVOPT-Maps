@@ -57,8 +57,9 @@ class Planner:
     def _energy(self, d):
         return self.vehicle.edge_energy_kwh(d["length"], d["speed_kph"], d["travel_time"], self.temp_c)
 
-    def _charge_secs(self, node):
-        kw = min(self.vehicle.max_charge_kw, self.G.nodes[node]["charger_kw"])
+    def _charge_secs(self, node, level):
+        """Secondi per caricare l'unità sopra `level`, alla potenza che la curva dà a metà di quell'unità."""
+        kw = self.vehicle.charge_power_kw((level + 0.5) / self.steps, self.G.nodes[node]["charger_kw"])
         return self.unit / kw * 3600
 
     # ---------- tratti sul grafo stradale ----------
@@ -259,7 +260,7 @@ class Planner:
                 yield GOAL, 0.0, None
                 return
             if node in stations and level < steps:
-                secs = self._charge_secs(node) + (0.0 if charging else self.plug_in_s)
+                secs = self._charge_secs(node, level) + (0.0 if charging else self.plug_in_s)
                 yield (node, level + 1, True), secs, ("charge", secs)
             for b, leg, need in edges(node):
                 if level - need >= min_level:
@@ -440,8 +441,14 @@ class Planner:
                     target = max(target, min(cap, legs[goal].kwh + min_soc * cap))
                 added = max(0.0, target - soc)
                 if added > 0:
-                    kw = min(self.vehicle.max_charge_kw, self.G.nodes[node]["charger_kw"])
-                    secs = added / kw * 3600 + self.plug_in_s
+                    secs, level_kwh = self.plug_in_s, soc
+                    while level_kwh < soc + added - 1e-12:  # integra la curva di carica un'unità alla volta
+                        step = min(self.unit, soc + added - level_kwh)
+                        kw = self.vehicle.charge_power_kw(
+                            (level_kwh + step / 2) / cap, self.G.nodes[node]["charger_kw"]
+                        )
+                        secs += step / kw * 3600
+                        level_kwh += step
                     charges.append((node, added, secs, soc / cap, (soc + added) / cap))
                     soc, t = soc + added, t + secs
             reachable = {b: leg for b, leg in legs.items() if soc - leg.kwh >= min_soc * cap - 1e-9}
@@ -498,7 +505,9 @@ class Planner:
                 if left >= min_kwh - 1e-12:
                     nxt.append((v, t + tt, left, ("drive", node, v, length)))
             if node in self.stations and soc + self.unit <= cap + 1e-9:
-                secs = self._charge_secs(node) + (0.0 if charging else self.plug_in_s)
+                secs = self._charge_secs(node, (soc + self.unit / 2) / cap * self.steps - 0.5) + (
+                    0.0 if charging else self.plug_in_s
+                )
                 nxt.append((node, t + secs, soc + self.unit, ("charge", secs)))
             for v, nt, nsoc, mv in nxt:
                 if not dominated(v, mv[0] == "charge", nsoc):

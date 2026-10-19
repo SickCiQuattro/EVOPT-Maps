@@ -217,7 +217,7 @@ function diagram(res, v) {
   const items = [station("", "end", res.start.label, ["Leave with ", strong(`${v.startSoc} %`)], 0)];
   res.stops.forEach((s, k) => items.push(station(k + 1, "stop", `Charging stop ${k + 1}`, [
     "Arrive ", strong(pct(s.soc_before)), " · charge ", strong(dur(s.minutes)), " to ", strong(pct(s.soc_after)),
-    h("br"), `+${kwh(s.kwh)}\u00a0kWh at ${+s.power_kw.toFixed(1)}\u00a0kW`,
+    h("br"), `+${kwh(s.kwh)}\u00a0kWh at up to ${+s.power_kw.toFixed(1)}\u00a0kW`,
   ], k + 1)));
   const last = res.stops.length + 1;
   items.push(station("", "end", res.goal.label, res.stops.length
