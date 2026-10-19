@@ -2,7 +2,7 @@ import itertools
 
 import pytest
 
-from evopt.search import ara_star, astar, dijkstra
+from evopt.search import alt_landmarks, ara_star, astar, dijkstra
 from tests.graphs import grid
 
 G = grid(12, seed=3)
@@ -62,3 +62,19 @@ def test_unreachable_goal_returns_none(algo):
 def test_start_equals_goal_is_a_zero_cost_path():
     r = astar(G, 5, 5)
     assert r.path == [5] and r.time_s == 0
+
+
+def test_alt_landmarks_keep_the_optimum_and_beat_uninformed_search():
+    lm = alt_landmarks(G, k=4)
+    d, a = dijkstra(G, START, GOAL), astar(G, START, GOAL, landmarks=lm)
+    assert a.time_s == pytest.approx(d.time_s) and a.expanded < d.expanded
+
+
+def test_alt_heuristic_is_admissible_for_every_node():
+    lm = alt_landmarks(G, k=3)
+    from evopt.search import alt_heuristic
+
+    h = alt_heuristic(G, GOAL, lm)
+    exact = dijkstra  # distanza vera da n al goal
+    for n in list(G.nodes)[::7]:
+        assert h(n) <= exact(G, n, GOAL).time_s + 1e-6 if n != GOAL else h(n) == 0

@@ -70,8 +70,11 @@ class Found:
     bound: float = 1.0
 
 
-def search(succ, src, dst, h, weight=1.0):
-    """A* / Weighted A* su un grafo implicito. Con h=0 è Dijkstra. L'euristica deve essere consistente."""
+def search(succ, src, dst, h, weight=1.0, prune=None):
+    """A* / Weighted A* su un grafo implicito. Con h=0 è Dijkstra. L'euristica deve essere consistente.
+
+    `prune(stato, g)` può scartare uno stato appena estratto (es. dominato da uno già chiuso); deve registrarlo se lo tiene.
+    """
     g, parent, closed, expanded = {src: 0.0}, {}, set(), 0
     heap = [(weight * h(src), 0.0, src)]
     while heap:
@@ -82,6 +85,8 @@ def search(succ, src, dst, h, weight=1.0):
             states, tags = _walk(parent, src, dst)
             return Found(states, tags, gu, expanded, weight, weight)
         closed.add(u)
+        if prune and prune(u, gu):
+            continue
         expanded += 1
         for v, c, tag in succ(u):
             if v not in closed and gu + c < g.get(v, INF):
@@ -132,6 +137,64 @@ def ara(succ, src, dst, h, eps=3.0, decrease=0.5):
         closed, incons = set(), set()
 
 
+def _distances(G, src, reverse=False):
+    """Tempi minimi da `src` a tutti i nodi (o verso `src` se reverse)."""
+    dist, done, heap = {src: 0.0}, set(), [(0.0, src)]
+    edges = (
+        (lambda u: ((p, d) for p, _, d in G.in_edges(u, data=True)))
+        if reverse
+        else (lambda u: ((v, d) for _, v, d in G.out_edges(u, data=True)))
+    )
+    while heap:
+        t, u = heapq.heappop(heap)
+        if u in done:
+            continue
+        done.add(u)
+        for v, d in edges(u):
+            nt = t + d["travel_time"]
+            if nt < dist.get(v, INF):
+                dist[v] = nt
+                heapq.heappush(heap, (nt, v))
+    return dist
+
+
+def alt_landmarks(G, k=8):
+    """ALT (Goldberg e Harrelson): k nodi di riferimento scelti 'il più lontano possibile' e i tempi da/verso ciascuno.
+
+    shortcut: scelta farthest-first da un nodo qualunque; per grafi non connessi serve prendere la componente maggiore.
+    """
+    first = next(iter(G.nodes))
+    far = _distances(G, first)
+    chosen, nearest = [], {n: INF for n in far}
+    pick = max(far, key=far.get)
+    while len(chosen) < k:
+        d_from = _distances(G, pick)
+        chosen.append((pick, d_from, _distances(G, pick, reverse=True)))
+        for n, value in nearest.items():
+            nearest[n] = min(value, d_from.get(n, INF))
+        nxt = max((n for n in nearest if nearest[n] < INF), key=nearest.get)
+        if nxt in {c[0] for c in chosen}:
+            break
+        pick = nxt
+    return chosen
+
+
+def alt_heuristic(G, goal, landmarks):
+    """Limite inferiore consistente del tempo verso `goal` dalla disuguaglianza triangolare sui landmark."""
+    pairs = [(d_from, d_to, d_from.get(goal), d_to.get(goal)) for _, d_from, d_to in landmarks]
+
+    def h(n):
+        best = 0.0
+        for d_from, d_to, from_goal, to_goal in pairs:
+            if from_goal is not None and n in d_from:
+                best = max(best, from_goal - d_from[n])
+            if to_goal is not None and n in d_to:
+                best = max(best, d_to[n] - to_goal)
+        return best
+
+    return h
+
+
 def _as_path(f):
     return PathResult(f.states, f.cost, f.expanded, f.eps, f.bound)
 
@@ -141,9 +204,16 @@ def dijkstra(G, src, dst):
     return f and _as_path(f)
 
 
-def astar(G, src, dst, weight=1.0):
-    """weight=1 è A* ottimo; weight>1 è Weighted A*: più veloce, al più `weight` volte l'ottimo."""
-    f = search(lambda u: _succ(G, u), src, dst, time_heuristic(G, dst), weight)
+def astar(G, src, dst, weight=1.0, landmarks=None):
+    """weight=1 è A* ottimo; weight>1 è Weighted A*: più veloce, al più `weight` volte l'ottimo.
+
+    Con `landmarks` (vedi alt_landmarks) l'euristica è il massimo tra linea d'aria e ALT: ancora consistente.
+    """
+    h = time_heuristic(G, dst)
+    if landmarks:
+        straight, alt = h, alt_heuristic(G, dst, landmarks)
+        h = lambda n: max(straight(n), alt(n))
+    f = search(lambda u: _succ(G, u), src, dst, h, weight)
     return f and _as_path(f)
 
 
