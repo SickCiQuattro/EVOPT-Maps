@@ -1,5 +1,6 @@
 import os
 import warnings
+from pathlib import Path
 
 import numpy as np
 import osmnx as ox
@@ -8,13 +9,16 @@ from evopt.cache import CACHE_DIR, cached, slug
 from evopt.graph import haversine_m, load_graph
 from evopt.stations import apply_stations, fetch_ocm, fetch_osm, load_stations, merge, save_stations
 
+DATA_DIR = Path("data")
 GRAPH_TTL_DAYS = 30  # le strade cambiano piano e il download pesa
 STATIONS_TTL_DAYS = 7  # le colonnine cambiano più spesso
 
 
-def load_network(place, cache_dir=CACHE_DIR, progress=None):
+def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
     """Grafo di `place` con le stazioni (OSM, più OCM se c'è OCM_API_KEY) sui nodi 'charger_kw'."""
     progress = progress or (lambda stage: None)
+    if place.startswith("local:"):
+        return _load_local(place[len("local:") :], progress, Path(data_dir))
     key = slug(place)
     progress("roads")
     G = cached(
@@ -57,3 +61,18 @@ def _circle(G):
     xs = np.array([d["x"] for _, d in G.nodes(data=True)])
     lat, lon = ys.mean(), xs.mean()
     return lat, lon, float(haversine_m(lat, lon, ys, xs).max()) / 1000 + 1
+
+
+def _load_local(name, progress, data_dir):
+    """Estratto locale prodotto da `benchmarks.extract`: nessuna rete, nessuna scadenza."""
+    graph, stations = data_dir / f"{name}.graphml", data_dir / f"{name}-stations.json"
+    if not graph.exists():
+        raise FileNotFoundError(
+            f"no local extract {name!r}: make it with `python -m benchmarks.extract` (see README)"
+        )
+    progress("roads")
+    G = ox.load_graphml(graph)
+    progress("stations")
+    if stations.exists():
+        apply_stations(G, load_stations(stations))
+    return G

@@ -26,18 +26,19 @@ ALGORITHM_INFO = {
     "exact": ("Exact reference", "Label search on the full road network, no reduced graph. Slow: for checking the others."),
 }  # fmt: skip
 Leg = namedtuple("Leg", "time_s kwh meters path")
-GOAL = (-1, -1)  # stato terminale: raggiunto il goal con qualunque carica
+GOAL = (-1, -1, False)  # stato terminale: raggiunto il goal con qualunque carica
 
 
 class Planner:
     """Pianifica viaggi su un grafo per un veicolo e una temperatura, riusando i tratti tra stazioni."""
 
-    def __init__(self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True):
+    def __init__(self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0):
         if legs not in ("fastest", "pareto"):
             raise ValueError("legs must be 'fastest' or 'pareto'")
         self.G, self.vehicle, self.temp_c, self.steps, self.legs_mode = G, vehicle, temp_c, steps, legs
         self.stations = frozenset(n for n, d in G.nodes(data=True) if "charger_kw" in d)
         self.unit = vehicle.capacity_kwh / steps
+        self.plug_in_s = plug_in_s  # tempo fisso per sosta: collegare il cavo e avviare la ricarica
         self.dominance = (
             dominance  # scarta (nodo, livello) battuti da uno stato chiuso con più carica e costo minore
         )
@@ -178,20 +179,20 @@ class Planner:
         steps, stations = self.steps, self.stations
 
         def succ(state):
-            node, level = state
+            node, level, charging = state
             if node == goal:
                 yield GOAL, 0.0, None
                 return
             if node in stations and level < steps:
-                secs = self._charge_secs(node)
-                yield (node, level + 1), secs, ("charge", secs)
+                secs = self._charge_secs(node) + (0.0 if charging else self.plug_in_s)
+                yield (node, level + 1, True), secs, ("charge", secs)
             for b, leg, need in edges(node):
                 if level - need >= min_level:
-                    yield (b, level - need), leg.time_s, ("drive", leg)
+                    yield (b, level - need, False), leg.time_s, ("drive", leg)
 
         return (
             succ,
-            (start, level0),
+            (start, level0, False),
             self._heuristics(goal, min_level, need_potential),
             (time.perf_counter() - t0) * 1000,
         )
@@ -245,7 +246,7 @@ class Planner:
         def with_energy(state):
             if state == GOAL:
                 return 0.0
-            node, level = state
+            node, level, _ = state
             meters = _hav(G.nodes[node]["y"], G.nodes[node]["x"], g["y"], g["x"])
             # kWh che mancano al viaggio in linea d'aria, oltre a quelli disponibili sopra la soglia di arrivo
             deficit = e_min * meters - (level - min_level) * unit
@@ -254,7 +255,7 @@ class Planner:
         def potential(state):
             if state == GOAL:
                 return 0.0
-            node, level = state
+            node, level, _ = state
             t = times.get(node)
             if t is None:
                 return INF  # da qui il goal non si raggiunge
@@ -288,24 +289,27 @@ class Planner:
         return route
 
     def _prune(self):
-        best = {}  # nodo -> suffisso dei minimi: best[l] = g minimo tra gli stati chiusi con livello >= l
+        # per nodo e per "sto già caricando", suffisso dei minimi: best[l] = g minimo tra gli stati chiusi con livello >= l
+        best = {}
 
         def prune(state, g):
             if state == GOAL:
                 return False
-            node, level = state
-            suffix = best.setdefault(node, [INF] * (self.steps + 1))
-            if g >= suffix[level] - 1e-9:
+            node, level, charging = state
+            own = best.setdefault((node, charging), [INF] * (self.steps + 1))
+            other = best.get((node, True))
+            # chi sta già caricando ha pagato il collegamento: batte chi non ha ancora cominciato
+            if g >= own[level] - 1e-9 or (not charging and other is not None and g >= other[level] - 1e-9):
                 return True
             for lv in range(level + 1):
-                suffix[lv] = min(suffix[lv], g)
+                own[lv] = min(own[lv], g)
             return False
 
         return prune
 
     def _build(self, found):
         path, dist, charges = [], 0.0, []
-        for (node, level), tag in zip(found.states, found.tags):
+        for (node, level, _), tag in zip(found.states, found.tags):
             if tag is None:  # arco verso lo stato terminale
                 continue
             if tag[0] == "drive":
@@ -360,7 +364,7 @@ class Planner:
                 added = max(0.0, target - soc)
                 if added > 0:
                     kw = min(self.vehicle.max_charge_kw, self.G.nodes[node]["charger_kw"])
-                    secs = added / kw * 3600
+                    secs = added / kw * 3600 + self.plug_in_s
                     charges.append((node, added, secs, soc / cap, (soc + added) / cap))
                     soc, t = soc + added, t + secs
             reachable = {b: leg for b, leg in legs.items() if soc - leg.kwh >= min_soc * cap - 1e-9}
@@ -396,12 +400,18 @@ class Planner:
         min_kwh, h = min_soc * cap, time_heuristic(G, goal)
         labels = [(start, 0.0, start_soc * cap, -1, None)]  # nodo, tempo, kWh, genitore, mossa
         heap, best_soc, expanded = [(h(start), 0.0, 0)], {}, 0
+
+        def dominated(node, charging, soc):  # chi sta già caricando ha pagato il collegamento
+            keys = [(node, True)] if charging else [(node, False), (node, True)]
+            return any(soc <= best_soc.get(k, -INF) + 1e-12 for k in keys)
+
         while heap:
             _, t, i = heapq.heappop(heap)
-            node, _, soc, _, _ = labels[i]
-            if soc <= best_soc.get(node, -INF) + 1e-12:
+            node, _, soc, _, move = labels[i]
+            charging = move is not None and move[0] == "charge"
+            if dominated(node, charging, soc):
                 continue  # dominata: esiste un'etichetta già chiusa con più carica (e tempo minore o uguale)
-            best_soc[node] = soc
+            best_soc[(node, charging)] = soc
             expanded += 1
             if node == goal:
                 return self._exact_route(labels, i, t, expanded, (time.perf_counter() - t0) * 1000)
@@ -411,11 +421,11 @@ class Planner:
                 if left >= min_kwh - 1e-12:
                     nxt.append((v, t + d["travel_time"], left, ("drive", node, v, d["length"])))
             if node in self.stations and soc + self.unit <= cap + 1e-9:
-                secs = self._charge_secs(node)
+                secs = self._charge_secs(node) + (0.0 if charging else self.plug_in_s)
                 nxt.append((node, t + secs, soc + self.unit, ("charge", secs)))
-            for v, nt, nsoc, move in nxt:
-                if nsoc > best_soc.get(v, -INF) + 1e-12:
-                    labels.append((v, nt, nsoc, i, move))
+            for v, nt, nsoc, mv in nxt:
+                if not dominated(v, mv[0] == "charge", nsoc):
+                    labels.append((v, nt, nsoc, i, mv))
                     heapq.heappush(heap, (nt + h(v), nt, len(labels) - 1))
         raise NoRouteError("no route with this battery and these stations")
 

@@ -24,6 +24,7 @@ JOB_TTL_S = 3600
 NETWORK_TTL_S = 3600  # in memoria; su disco grafo e stazioni durano di più (evopt.data)
 MAX_NETWORKS = 4
 MAX_PLANNERS = 16
+PLUG_IN_S = 180  # collegare il cavo e avviare la ricarica: nessuno si ferma per un minuto
 EXACT_MAX_NODES = 2500  # il riferimento esatto è lento: oltre questa taglia nel confronto si salta
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -204,7 +205,7 @@ def _planner(G, req):
     if key not in PLANNERS:
         if len(PLANNERS) >= MAX_PLANNERS:
             del PLANNERS[next(iter(PLANNERS))]
-        PLANNERS[key] = Planner(G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs)
+        PLANNERS[key] = Planner(G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S)
     return PLANNERS[key]
 
 
@@ -238,6 +239,8 @@ def _plan(job, req):
     points = {"start": (req.start, _locate(req.start)), "goal": (req.goal, _locate(req.goal))}
     try:
         G = _network(req.area, job)
+    except FileNotFoundError as e:  # estratto locale mancante ("local:nome")
+        raise JobError("not_found", str(e)) from e
     except InsufficientResponseError as e:
         raise JobError(
             "not_found",

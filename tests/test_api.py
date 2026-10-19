@@ -184,3 +184,12 @@ def test_network_and_station_legs_are_reused_across_requests(client):
 
 def test_pareto_legs_can_be_requested(client):
     assert run(client, legs="pareto")["status"] == "done"
+
+
+def test_missing_local_extract_is_reported_with_how_to_fix_it(client, monkeypatch):
+    def missing(place, progress=None):
+        raise FileNotFoundError("no local extract 'x': make it with `python -m benchmarks.extract`")
+
+    monkeypatch.setattr(api, "load_network", missing)
+    job = run(client, area="local:x")
+    assert job["error"]["code"] == "not_found" and "benchmarks.extract" in job["error"]["message"]
