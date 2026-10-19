@@ -12,9 +12,11 @@ GRAPH_TTL_DAYS = 30  # le strade cambiano piano e il download pesa
 STATIONS_TTL_DAYS = 7  # le colonnine cambiano più spesso
 
 
-def load_network(place, cache_dir=CACHE_DIR):
+def load_network(place, cache_dir=CACHE_DIR, progress=None):
     """Grafo di `place` con le stazioni (OSM, più OCM se c'è OCM_API_KEY) sui nodi 'charger_kw'."""
+    progress = progress or (lambda stage: None)
     key = slug(place)
+    progress("roads")
     G = cached(
         cache_dir / f"graph-{key}.graphml",
         GRAPH_TTL_DAYS,
@@ -22,6 +24,7 @@ def load_network(place, cache_dir=CACHE_DIR):
         ox.load_graphml,
         ox.save_graphml,
     )
+    progress("stations")
     # il grafo in cache non contiene stazioni: si applicano ogni volta, così scadono per conto loro
     stations = cached(
         cache_dir / f"stations-osm-{key}.json",
@@ -31,6 +34,7 @@ def load_network(place, cache_dir=CACHE_DIR):
         save_stations,
     )
     if os.environ.get("OCM_API_KEY"):
+        progress("power")
         lat, lon, radius_km = _circle(G)
         try:
             ocm = cached(

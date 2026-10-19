@@ -38,6 +38,14 @@ def test_long_trip_charges_at_the_only_station():
     assert r.arrival_soc >= 0.1
 
 
+def test_charge_stop_reports_charge_before_and_after():
+    r = plan_route(line(12, stations=[6]), 0, 11, CAR)
+    _, kwh, secs, before, after = r.charges[0]
+    assert 0.1 <= before < after <= 1.0
+    assert kwh == pytest.approx((after - before) * CAR.capacity_kwh)
+    assert secs == pytest.approx(kwh / 50 * 3600)
+
+
 def test_unreachable_without_station():
     with pytest.raises(NoRouteError):
         plan_route(line(12), 0, 11, CAR)

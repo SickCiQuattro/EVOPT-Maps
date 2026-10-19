@@ -12,7 +12,7 @@ class Route:
     path: list  # nodi dalla partenza all'arrivo
     time_s: float  # guida + ricariche
     distance_m: float
-    charges: list  # (nodo, kWh caricati, secondi)
+    charges: list  # (nodo, kWh caricati, secondi, carica prima, carica dopo)
     arrival_soc: float
 
 
@@ -82,7 +82,7 @@ def plan_route(G, start, goal, vehicle, *, temp_c=20, start_soc=1.0, min_soc=0.1
             continue
         node, level = state
         if node == goal:
-            return _build(state, t, prev, unit, steps)
+            return _build(state, t, prev, unit, steps, vehicle.capacity_kwh)
         if node in stations and level < steps:
             secs = unit / min(vehicle.max_charge_kw, G.nodes[node]["charger_kw"]) * 3600
             _relax(dist, prev, heap, state, (node, level + 1), t + secs, ("charge", secs))
@@ -99,20 +99,22 @@ def _relax(dist, prev, heap, state, nxt, t, move):
         heapq.heappush(heap, (t, nxt))
 
 
-def _build(state, time_s, prev, unit, steps):
+def _build(state, time_s, prev, unit, steps, capacity_kwh):
     arrival_soc = state[1] / steps
     moves = []
     while state in prev:
         state, move = prev[state]
-        moves.append((state[0], move))
+        moves.append((state, move))
     path, distance, charges = [], 0.0, []
-    for node, move in reversed(moves):
+    for (node, level), move in reversed(moves):
         if move[0] == "drive":
             path += move[1] if not path else move[1][1:]
             distance += move[2]
-        elif charges and charges[-1][0] == node:
-            charges[-1][1] += unit
-            charges[-1][2] += move[1]
-        else:
-            charges.append([node, unit, move[1]])
+            continue
+        if not charges or charges[-1][0] != node:
+            charges.append([node, 0.0, 0.0, level / steps, level / steps])
+        stop = charges[-1]
+        stop[1] += unit
+        stop[2] += move[1]
+        stop[4] = (level + 1) / steps
     return Route(path, time_s, distance, [tuple(c) for c in charges], arrival_soc)

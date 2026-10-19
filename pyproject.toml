@@ -8,10 +8,17 @@ dependencies = [
     "osmnx>=2.1",
     "networkx>=3.4",
     "numpy>=2.2",
+    "fastapi>=0.146.0",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.8"]
+dev = [
+    "httpx>=0.28.1",
+    "httpx2>=2.14.0",
+    "pytest>=8",
+    "ruff>=0.8",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
