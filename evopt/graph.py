@@ -1,6 +1,8 @@
 import numpy as np
 import osmnx as ox
 
+ox.settings.use_cache = False  # la cache con scadenza è in evopt.cache: quella di osmnx non invecchia mai
+
 
 def load_graph(place):
     """Rete stradale guidabile con 'length', 'speed_kph' e 'travel_time' su ogni arco. Resta orientata."""

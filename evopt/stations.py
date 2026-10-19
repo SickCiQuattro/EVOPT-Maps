@@ -4,6 +4,7 @@ import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import osmnx as ox
@@ -107,3 +108,11 @@ def apply_stations(G, stations, default_kw=22.0, max_snap_m=200):
         if dist <= max_snap_m:
             kw = s.kw if s.kw is not None else default_kw
             G.nodes[node]["charger_kw"] = max(kw, G.nodes[node].get("charger_kw", 0))
+
+
+def save_stations(stations, path):
+    Path(path).write_text(json.dumps([[s.lat, s.lon, s.kw] for s in stations]))
+
+
+def load_stations(path):
+    return [Station(*row) for row in json.loads(Path(path).read_text())]
