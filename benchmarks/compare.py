@@ -2,8 +2,8 @@
 
 Uso: uv run python -m benchmarks.compare [--real "Pieve Emanuele, Italy"]
 
-La prima ricerca di un Planner paga la tabella dei tratti tra stazioni; la si misura a parte ("cold")
-e poi tutti gli algoritmi girano a cache calda, così il confronto è equo.
+La prima ricerca di un Planner paga i tratti tra le stazioni che espande; la si misura a parte ("cold")
+e poi tutti gli algoritmi girano a cache parziale ma calda, così il confronto è equo.
 """
 
 import argparse
@@ -29,7 +29,7 @@ def synthetic(n, stations):
 def run(G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fastest", skip=()):
     planner = Planner(G, vehicle, temp_c, legs=legs)
     kw = {"start_soc": start_soc, "min_soc": min_soc}
-    cold = planner.plan(start, goal, algorithm="dijkstra", **kw)
+    cold = planner.plan(start, goal, algorithm="astar_potential", **kw)
     results = {}
     for alg in ALGORITHMS:
         if alg in skip:
@@ -40,7 +40,8 @@ def run(G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fa
             results[alg] = None
     best = min(r.time_s for r in results.values() if r)
     print(
-        f"Station-leg table, built once: {cold.stats['prep_ms']:.0f} ms ({planner.leg_searches} road searches)\n"
+        f"First plan, cold (A* with exact potentials): {cold.stats['total_ms']:.0f} ms, "
+        f"{cold.stats['leg_searches']} road searches (legs are computed only for stations the search reaches)\n"
     )
     print("| algorithm | trip (min) | vs best | stops | states expanded | prep ms | search ms |")
     print("|---|---|---|---|---|---|---|")

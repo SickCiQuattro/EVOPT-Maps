@@ -19,6 +19,9 @@ dev = [
     "pytest>=8",
     "ruff>=0.8",
 ]
+extract = [
+    "osmium>=4.3.2",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

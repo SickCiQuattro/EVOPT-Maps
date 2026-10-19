@@ -98,8 +98,17 @@ def test_station_legs_are_computed_once_per_planner(city):
     p = Planner(city, SMALL, 20)
     p.plan(0, 143, algorithm="astar", start_soc=1.0, min_soc=0.1)
     after_first = p.leg_searches
-    p.plan(5, 140, algorithm="astar", start_soc=1.0, min_soc=0.1)
-    assert p.leg_searches - after_first == 2  # solo partenza e arrivo del nuovo viaggio
+    p.plan(0, 143, algorithm="astar", start_soc=1.0, min_soc=0.1)
+    assert (
+        p.leg_searches - after_first == 2
+    )  # solo partenza e arrivo: i tratti tra stazioni sono già in tabella
+
+
+def test_station_legs_are_computed_lazily_only_for_stations_the_search_reaches():
+    G = line(40, stations=range(2, 40, 2))  # 19 stazioni, ma il viaggio è breve
+    p = Planner(G, CAR, 20)
+    p.plan(0, 6, algorithm="astar_potential", start_soc=1.0, min_soc=0.1)
+    assert p.leg_searches < 19
 
 
 def test_pareto_legs_find_the_efficient_road_the_fastest_leg_would_miss():
