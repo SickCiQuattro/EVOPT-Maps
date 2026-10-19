@@ -63,3 +63,40 @@ def test_a_round_trip_over_a_hill_costs_more_than_the_flat_equivalent():
         car.edge_energy_kwh(5000, 90, 200, rise_m=60) + car.edge_energy_kwh(5000, 90, 200, rise_m=-60)
         > 2 * flat
     )
+
+
+def test_cold_penalty_is_per_kilometre_and_zero_above_the_comfort_temperature():
+    car = Vehicle(50, 1500, 0.6, 100, heat_kw_per_c=0.0, cold_kwh_per_km_per_c=0.002)
+    base = car.edge_energy_kwh(10_000, 90, 400, temp_c=20)
+    assert car.edge_energy_kwh(10_000, 90, 400, temp_c=18) == pytest.approx(base)
+    assert car.edge_energy_kwh(10_000, 90, 400, temp_c=-10) - base == pytest.approx(0.002 * 10 * 28)
+    assert car.edge_energy_kwh(20_000, 90, 800, temp_c=-10) - car.edge_energy_kwh(
+        20_000, 90, 800, 20
+    ) == pytest.approx(2 * 0.002 * 10 * 28)  # raddoppia con la distanza, non con il tempo
+
+
+def test_defaults_keep_the_original_time_based_climate_load():
+    car = Vehicle(50, 1500, 0.6, 100)
+    assert (
+        car.aux_kw(20) == 0.5
+        and car.aux_kw(-10) == pytest.approx(0.5 + 0.1 * 28)
+        and car.aux_kw(38) == pytest.approx(1.9)
+    )
+    assert car.cold_kwh_per_km_per_c == 0 and car.source is None
+
+
+def test_heating_and_cooling_coefficients_are_separate():
+    car = Vehicle(50, 1500, 0.6, 100, heat_kw_per_c=0.0, cool_kw_per_c=0.2)
+    assert car.aux_kw(-10) == 0.5 and car.aux_kw(34) == pytest.approx(0.5 + 0.2 * 10)
+
+
+def test_stop_and_go_overhead_applies_only_below_the_urban_speed_and_scales_with_distance():
+    car = Vehicle(50, 1500, 0.6, 100, stop_go_kwh_per_km=0.03)
+    plain = Vehicle(50, 1500, 0.6, 100)
+    extra = lambda kph, m=1000: (
+        car.edge_energy_kwh(m, kph, m / (kph / 3.6)) - plain.edge_energy_kwh(m, kph, m / (kph / 3.6))
+    )
+    assert extra(70) == pytest.approx(0) and extra(120) == pytest.approx(0)
+    assert extra(50) == pytest.approx(0.03, rel=1e-6)  # per definizione: il sovraccosto a 50 km/h
+    assert extra(30) > extra(50) > extra(60) > 0
+    assert extra(50, 3000) == pytest.approx(3 * extra(50))
