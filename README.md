@@ -14,7 +14,7 @@ It started as a university project for the Intelligent Systems course and has be
 
 - Real road network from OpenStreetMap, kept directed so one-way streets are respected.
 - Real charging stations with their operator and name, from OpenStreetMap, completed with power data from Open Charge Map when an API key is set. Fast-charger sockets (CCS, CHAdeMO) hint at 50 kW when no power is published.
-- Physical energy model: rolling resistance, air drag, drivetrain efficiency and temperature-dependent climate load.
+- Physical energy model: rolling resistance, air drag, drivetrain efficiency, temperature-dependent climate load, and climbs and descents from terrain data.
 - Charging that slows down above 80% on fast chargers, and a fixed 3 minutes per stop for plugging in (in the web app), so the plan avoids pointless one-minute stops.
 - Time-optimal planning over battery state, with eight algorithms you can switch and compare.
 - Web interface with live progress, clear errors, a vehicle roster and a comparison page.
@@ -70,8 +70,10 @@ print(route.time_s / 60, "min,", len(route.charges), "charging stop(s),", route.
 1. **Energy per segment.** For each road segment the model adds rolling resistance and air drag at the segment speed, divided by drivetrain efficiency, plus the power of heating or cooling over the time spent on it:
 
    ```text
-   energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + aux(temperature) · time
+   energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + m·g·rise / efficiency + aux(temperature) · time
    ```
+
+   On a descent the last gravity term is replaced by a recovery of 60%, and the energy of a segment never goes below its auxiliary load: a descent saves energy but never charges the battery.
 
 2. **Reduced graph.** Dijkstra on travel time from the start and towards the goal keeps only the legs the battery can cover. The legs between stations are computed lazily, only for stations the search actually reaches, then reused by every later plan and saved on disk in `cache/` (they keep only time, energy and metres; the road path is rebuilt for the legs of the chosen trip). This leaves a small graph of start, goal and stations.
 3. **Search over battery state.** A state is `(node, charge level, charging)` with the charge in 1% steps. Driving spends levels; charging adds one level at a power that depends on the charge (it tapers above 80% on fast chargers); starting to charge costs a fixed plug-in time once per stop; and the trip never goes below the chosen arrival charge. The goal is any state at the destination.
@@ -155,6 +157,28 @@ What the numbers say:
 - **The reduced graph agrees with the exact reference** within 0.1%.
 - **Pareto legs cost 7 to 8 times more** to build and gave the same trip on the grids.
 
+### Elevation
+
+Node elevations come from terrain tiles on AWS Open Data (Terrarium, about 30 m, no key or login), sampled with bilinear interpolation, cached under `cache/dem/` and lightly smoothed along the road network. Turn it off per trip under **Advanced** to see how much it matters. `Planner(elevation=False)` does the same in code.
+
+Measured on the real corridors, with the Tesla Model 3 (54 kWh) so a leg fits the battery:
+
+| Trip | Net climb | Energy, flat | Energy, with elevation | Difference |
+| --- | --- | --- | --- | --- |
+| Milano to Torino, 145 km | +120 m | 27.62 kWh | 28.73 kWh | +1.11 kWh |
+| Torino to Milano | −120 m | 27.14 kWh | 27.34 kWh | +0.20 kWh |
+| Torino to Courmayeur, 149 km | +967 m | 25.10 kWh | 30.80 kWh | **+23%** |
+| Courmayeur to Torino | −967 m | 25.13 kWh | 24.43 kWh | −3% |
+
+With the Twingo (22 kWh, 0 °C, 3 minutes per stop), Torino to Courmayeur goes from 113.6 to 123.2 minutes, the stop growing from 24 to 34 minutes. The same trip in the web app, with Courmayeur geocoded at 1,677 m, goes from 2 h 00 to 2 h 11.
+
+What to trust, and what not:
+
+- **Climbs are close to physics:** the Torino to Courmayeur climb costs 5.7 kWh against about 5.3 kWh of potential energy over efficiency.
+- **Descents are prudent:** the model gives back 60% and never below zero, so Courmayeur to Torino saves 0.7 kWh where the physics suggests 1.5 to 2.7.
+- **Elevation noise is real.** On the flat Milano to Torino corridor, raw terrain data added about +0.9 kWh of spurious energy in both directions (bridges and viaducts read as dips, so climbs are paid in full and descents only partly refunded). Smoothing the elevations along the network brings it to about +0.5 kWh, roughly 2%, part of which is real rolling terrain. On the Torino to Courmayeur path the gross ascent is 442 m and the gross descent 1,409 m for a net −967 m, which is why the app shows the net climb and the highest point, not the gross figures.
+- Segments steeper than a 12% average are capped, to protect against data glitches (39 of 446 segments on that path).
+
 ## Realistic test
 
 Big areas fail on the public Overpass server, so the real trip above uses a local OpenStreetMap extract.
@@ -164,6 +188,9 @@ mkdir -p data
 curl -L -o data/nord-ovest.osm.pbf https://download.geofabrik.de/europe/italy/nord-ovest-latest.osm.pbf   # 593 MB
 uv run --group extract python -m benchmarks.extract data/nord-ovest.osm.pbf --bbox 7.4 44.9 9.5 45.7 --name milano-torino
 uv run python -m benchmarks.compare --local milano-torino
+
+# a mountain trip: Torino to Courmayeur, about 1,000 m of climb
+uv run --group extract python -m benchmarks.extract data/nord-ovest.osm.pbf --bbox 6.8 44.95 7.9 45.9 --name torino-courmayeur
 ```
 
 The extraction keeps motorways, trunk, primary and secondary roads, contracts nodes that are not junctions, and reads charging stations (with name, operator and power) from the same file. Select it in the web app with the area name `local:milano-torino`. With `OCM_API_KEY` set, Open Charge Map completes the stations in 25 km tiles (859 charger nodes instead of 506 on this corridor). The `data/` folder is not tracked by git.
@@ -174,6 +201,7 @@ The extraction keeps motorways, trunk, primary and secondary roads, contracts no
 | --- | --- |
 | `evopt/vehicle.py` | Vehicle data and the energy model |
 | `evopt/graph.py` | Road graph loading, nearest node, route geometry |
+| `evopt/elevation.py` | Terrain tiles, bilinear sampling, smoothing, node elevations |
 | `evopt/stations.py` | Stations from OpenStreetMap and Open Charge Map, merging, snapping to the graph |
 | `evopt/search.py` | Dijkstra, A*, Weighted A*, ARA* on a generic implicit graph |
 | `evopt/planner.py` | The `Planner`: energy legs, state graph, all algorithms, naive and exact baselines |
@@ -202,7 +230,8 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 > [!IMPORTANT]
 > This is an estimate, not a navigation system.
 
-- No traffic, road works, elevation or braking energy recovery.
+- No traffic or road works.
+- Elevation is approximate: 30 m terrain data, smoothed, with prudent energy recovery on descents (see [Elevation](#elevation)).
 - No live charger availability, and no access rules: a car may be sent to a charger its network does not allow.
 - Charging power tapers with a simple curve (above 80% on fast chargers, constant on AC); real curves depend on temperature and battery state.
 - Station power is often missing in OpenStreetMap (217 of 1,400 on the corridor): it is estimated from the sockets, completed from Open Charge Map when a key is set, and otherwise assumed to be 22 kW.
@@ -212,6 +241,6 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 
 ## Credits
 
-Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Station data from [Open Charge Map](https://openchargemap.org). Maps drawn with [Leaflet](https://leafletjs.com).
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Station data from [Open Charge Map](https://openchargemap.org). Elevation from terrain tiles on [AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Mapzen, SRTM and other sources). Maps drawn with [Leaflet](https://leafletjs.com).
 
 By Filippo Camossi and Daniele Cioli. The original course presentation is in [`example/`](example/).
