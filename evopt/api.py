@@ -20,13 +20,13 @@ from evopt.router import NoRouteError
 from evopt.vehicle import VEHICLES
 
 log = logging.getLogger("evopt")
-MAX_SNAP_M = 2000  # oltre questa distanza dalla strada più vicina il punto è fuori area
+MAX_SNAP_M = 2000  # beyond this distance from the nearest road a point is outside the area
 JOB_TTL_S = 3600
-NETWORK_TTL_S = 3600  # in memoria; su disco grafo e stazioni durano di più (evopt.data)
+NETWORK_TTL_S = 3600  # in memory; on disk the graph and stations last longer (evopt.data)
 MAX_NETWORKS = 4
 MAX_PLANNERS = 16
-PLUG_IN_S = 180  # collegare il cavo e avviare la ricarica: nessuno si ferma per un minuto
-EXACT_MAX_NODES = 2500  # il riferimento esatto è lento: oltre questa taglia nel confronto si salta
+PLUG_IN_S = 180  # plugging in and starting the charge: nobody stops for one minute
+EXACT_MAX_NODES = 2500  # the exact reference is slow: above this size the comparison skips it
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
@@ -50,9 +50,9 @@ class PlanRequest(BaseModel):
     start_soc: float = Field(1.0, gt=0, le=1)
     min_soc: float = Field(0.1, ge=0, le=0.5)
     algorithm: str = "astar"
-    legs: str = "fastest"  # "pareto": più lento ma non perde tratti efficienti
-    compare: bool = False  # esegue anche tutti gli altri algoritmi e riporta il confronto
-    elevation: bool = True  # tiene conto di salite e discese (se la mappa ha le quote)
+    legs: str = "fastest"  # "pareto": slower but does not miss efficient legs
+    compare: bool = False  # also run all the other algorithms and report the comparison
+    elevation: bool = True  # account for climbs and descents (if the map has elevations)
 
     @field_validator("area", "start", "goal")
     @classmethod
@@ -94,10 +94,10 @@ class Job:
     result: dict | None = None
     error: dict | None = None
     started: float = 0.0
-    compare: str | None = None  # None | running | done | error: il confronto parte dopo il percorso
+    compare: str | None = None  # None | running | done | error: the comparison starts after the route
     compare_progress: tuple = (0, 0)
     comparison: list | None = None
-    context: tuple | None = None  # (planner, partenza, arrivo) per il confronto
+    context: tuple | None = None  # (planner, start, goal) for the comparison
 
 
 class JobError(Exception):
@@ -107,12 +107,12 @@ class JobError(Exception):
 
 JOBS: dict[str, Job] = {}
 _pool = ThreadPoolExecutor(max_workers=2)
-_network_lock = threading.Lock()  # una sola scarica alla volta: la seconda richiesta trova la cache
-_plan_lock = threading.Lock()  # i Planner hanno una tabella di tratti condivisa
-NETWORKS: dict[str, tuple[float, object]] = {}  # area -> (istante, grafo con stazioni)
+_network_lock = threading.Lock()  # one download at a time: the second request finds the cache
+_plan_lock = threading.Lock()  # Planners share a legs table
+NETWORKS: dict[str, tuple[float, object]] = {}  # area -> (time, graph with stations)
 PLANNERS: dict[
     tuple, Planner
-] = {}  # (area, veicolo, temperatura, tratti) -> Planner con tabella già calcolata
+] = {}  # (area, vehicle, temperature, legs, elevation) -> Planner with its legs table
 
 app = FastAPI(title="EVOPT Maps")
 
@@ -159,7 +159,7 @@ def job_status(job_id: str):
 
 
 def _elevation_summary(G, path, enabled):
-    """Dislivello netto e punto più alto. Non il dislivello lordo: il rumore dei dati lo gonfierebbe."""
+    """Net climb and highest point. Not the gross climb: data noise would inflate it."""
     heights = [G.nodes[n].get("elevation") for n in path]
     if not enabled or any(h is None for h in heights):
         return {"net_climb_m": None, "highest_m": None}
@@ -170,13 +170,13 @@ def _run(job, req):
     try:
         job.result = _plan(job, req)
         if req.compare:
-            job.compare = "running"  # prima di "done": il client non deve vedere un confronto che non partirà
+            job.compare = "running"  # before "done": the client must not see a comparison that will not start
         job.status = "done"
         if req.compare and job.context:
             _run_compare(job, req)
     except JobError as e:
         job.status, job.error = "error", {"code": e.code, "message": e.message}
-    except (OSError, ResponseStatusCodeError):  # rete assente o Overpass saturo/irraggiungibile
+    except (OSError, ResponseStatusCodeError):  # no network, or Overpass busy/unreachable
         log.exception("map data failed")
         job.status, job.error = (
             "error",
@@ -204,7 +204,7 @@ def _locate(query):
 
 
 def _network(area, job):
-    """Grafo con stazioni, tenuto in memoria: la tabella dei tratti dei Planner vive finché vive il grafo."""
+    """Graph with stations, kept in memory: the Planners' legs tables live as long as the graph."""
     with _network_lock:
         hit = NETWORKS.get(area)
         if hit and time.time() - hit[0] < NETWORK_TTL_S:
@@ -229,7 +229,7 @@ def _planner(G, req):
         planner = Planner(
             G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S, elevation=req.elevation
         )
-        planner.load_table(_table_path(planner))  # tratti già calcolati in sessioni precedenti
+        planner.load_table(_table_path(planner))  # legs computed in earlier sessions
         PLANNERS[key] = planner
     return PLANNERS[key]
 
@@ -239,7 +239,7 @@ def _table_path(planner):
 
 
 def _run_compare(job, req):
-    """Confronto con gli altri algoritmi, dopo che il percorso è già stato consegnato. Un lock per algoritmo."""
+    """Comparison with the other algorithms, after the route has been delivered. One lock per algorithm."""
     planner, start, goal = job.context
     job.compare, job.compare_progress, rows = "running", (0, len(ALGORITHMS)), []
     try:
@@ -272,7 +272,7 @@ def _run_compare(job, req):
         log.exception("comparison failed")
         job.compare = "error"
     finally:
-        job.context = None  # libera il Planner
+        job.context = None  # release the Planner
 
 
 def _save_table(planner):
@@ -285,7 +285,7 @@ def _plan(job, req):
     points = {"start": (req.start, _locate(req.start)), "goal": (req.goal, _locate(req.goal))}
     try:
         G = _network(req.area, job)
-    except FileNotFoundError as e:  # estratto locale mancante ("local:nome")
+    except FileNotFoundError as e:  # missing local extract ("local:name")
         raise JobError("not_found", str(e)) from e
     except InsufficientResponseError as e:
         raise JobError(
@@ -351,5 +351,5 @@ def _plan(job, req):
     }
 
 
-if WEB_DIR.exists():  # dopo le rotte API, altrimenti "/" le oscurerebbe
+if WEB_DIR.exists():  # after the API routes, otherwise "/" would shadow them
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

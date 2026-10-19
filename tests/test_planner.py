@@ -14,7 +14,7 @@ SMALL = Vehicle(capacity_kwh=0.5, mass_kg=1500, cda=0.6, max_charge_kw=50)
 
 @pytest.fixture(scope="module")
 def city():
-    """Griglia 12×12 con 15 stazioni, batteria troppo piccola per attraversarla senza ricaricare."""
+    """12×12 grid with 15 chargers and a battery too small to cross it without charging."""
     G = grid(12, seed=3)
     for n in random.Random(5).sample(list(G.nodes), 15):
         G.nodes[n]["charger_kw"] = 50
@@ -30,7 +30,7 @@ def test_every_algorithm_returns_a_feasible_route(city, algorithm):
     r = plan(city, algorithm)
     assert r.path[0] == 0 and r.path[-1] == len(city) - 1
     assert r.arrival_soc >= 0.1 - 1e-9 and r.time_s > 0
-    if algorithm != "wastar":  # entro il suo limite 2x può preferire un percorso lento senza soste
+    if algorithm != "wastar":  # within its bound it may prefer a slower route with no stops
         assert r.charges
     assert r.stats["algorithm"] == algorithm
 
@@ -73,7 +73,7 @@ def test_ara_star_history_improves_and_ends_optimal(city):
 
 def test_exact_reference_agrees_with_the_reduced_search_within_discretisation(city):
     d, e = plan(city, "dijkstra"), plan(city, "exact")
-    assert e.time_s <= 1.01 * d.time_s  # carica a passi di un livello: può restare di poco sopra
+    assert e.time_s <= 1.01 * d.time_s  # charge advances one level at a time: it may stay slightly above
     assert d.time_s <= 1.15 * e.time_s
 
 
@@ -89,7 +89,7 @@ def test_naive_driver_loses_time_charging_to_80_percent_everywhere():
 
 
 def test_naive_driver_charges_beyond_80_percent_when_that_is_not_enough_to_arrive():
-    G = line(12, stations=[6])  # dopo il tratto fino alla stazione servono più dell'80% per arrivare
+    G = line(12, stations=[6])  # after the leg to the charger, more than 80% is needed to arrive
     r = Planner(G, CAR, 20).plan(0, 11, 1.0, 0.1, algorithm="greedy")
     assert r.charges[0][4] > 0.8 and r.arrival_soc >= 0.1 - 1e-9
 
@@ -101,18 +101,18 @@ def test_station_legs_are_computed_once_per_planner(city):
     p.plan(0, 143, algorithm="astar", start_soc=1.0, min_soc=0.1)
     assert (
         p.leg_searches - after_first == 2
-    )  # solo partenza e arrivo: i tratti tra stazioni sono già in tabella
+    )  # start and goal only: the legs between chargers are already in the table
 
 
 def test_station_legs_are_computed_lazily_only_for_stations_the_search_reaches():
-    G = line(40, stations=range(2, 40, 2))  # 19 stazioni, ma il viaggio è breve
+    G = line(40, stations=range(2, 40, 2))  # 19 chargers, but the trip is short
     p = Planner(G, CAR, 20)
     p.plan(0, 6, algorithm="astar_potential", start_soc=1.0, min_soc=0.1)
     assert p.leg_searches < 19
 
 
 def test_pareto_legs_find_the_efficient_road_the_fastest_leg_would_miss():
-    """Il nodo 1 si raggiunge in fretta (energivoro) o piano (parsimonioso): solo la seconda via arriva alla stazione 2."""
+    """Node 1 is reached fast (energy-hungry) or slowly (frugal): only the second way gets to charger 2."""
     G = nx.MultiDiGraph()
     for n, x in enumerate((0.0, 0.35, 0.6, 0.7)):
         G.add_node(n, x=x, y=45.0)
@@ -155,7 +155,7 @@ def test_plug_in_time_discourages_useless_short_stops(city):
 
 
 def test_weighted_search_makes_no_pointless_stops_once_a_stop_has_a_cost(city):
-    """Con stop gratuiti una ricerca golosa ne fa molti; col tempo di collegamento torna sensata."""
+    """With free stops a greedy search makes many; with plug-in time it behaves again."""
     p = Planner(city, SMALL, 20, plug_in_s=180)
     opt = p.plan(0, 143, 1.0, 0.1, algorithm="astar_potential")
     w = p.plan(0, 143, 1.0, 0.1, algorithm="wastar", weight=3.0)
@@ -168,7 +168,7 @@ def test_station_table_keeps_no_paths_but_the_route_still_has_them(city):
     r = p.plan(0, 143, 1.0, 0.1, algorithm="astar")
     assert r.path[0] == 0 and r.path[-1] == 143
     assert all(leg.path is None for legs in p._table.values() for ls in legs.values() for leg in ls)
-    assert all(b in city[a] for a, b in zip(r.path, r.path[1:]))  # ogni passo è un arco vero
+    assert all(b in city[a] for a, b in zip(r.path, r.path[1:]))  # every step is a real edge
 
 
 def test_station_table_can_be_saved_and_reloaded(city, tmp_path):
@@ -179,7 +179,7 @@ def test_station_table_can_be_saved_and_reloaded(city, tmp_path):
     assert again.load_table(tmp_path / "t.pkl")
     b = again.plan(0, 143, 1.0, 0.1, algorithm="astar")
     assert b.time_s == pytest.approx(a.time_s) and b.path == a.path
-    assert again.leg_searches == 2  # solo partenza e arrivo: i tratti tra stazioni vengono dal disco
+    assert again.leg_searches == 2  # start and goal only: the legs between chargers come from disk
 
 
 def test_saved_table_is_ignored_when_the_scenario_differs(city, tmp_path):
@@ -187,7 +187,7 @@ def test_saved_table_is_ignored_when_the_scenario_differs(city, tmp_path):
     p = Planner(city, SMALL, 20)
     p.plan(0, 143, 1.0, 0.1, algorithm="astar")
     p.save_table(tmp_path / "t.pkl")
-    assert not Planner(city, SMALL, 5).load_table(tmp_path / "t.pkl")  # altra temperatura
+    assert not Planner(city, SMALL, 5).load_table(tmp_path / "t.pkl")  # a different temperature
     assert not Planner(city, SMALL, 20, legs="pareto").load_table(tmp_path / "t.pkl")
     (tmp_path / "bad.pkl").write_bytes(b"not a pickle")
     assert not Planner(city, SMALL, 20).load_table(tmp_path / "bad.pkl")
@@ -201,7 +201,7 @@ def test_charging_slows_down_above_the_knee_so_the_last_percent_costs_more():
     flat = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=150)
     a = Planner(G, fast, 20).plan(0, 11, 1.0, 0.1, algorithm="astar_potential")
     b = Planner(G, flat, 20).plan(0, 11, 1.0, 0.1, algorithm="astar_potential")
-    assert a.charges[0][1] >= b.charges[0][1] * 0.99  # stessa energia circa, da una carica più lenta
+    assert a.charges[0][1] >= b.charges[0][1] * 0.99  # about the same energy, from a slower charge
     assert a.charges[0][2] > b.charges[0][2]
 
 
@@ -212,13 +212,11 @@ def test_tapered_charging_is_consistent_across_algorithms(algorithm):
     car = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=150, taper_from=0.5, taper_to=0.2)
     ref = Planner(G, car, 20).plan(0, 11, 1.0, 0.1, algorithm="dijkstra")
     r = Planner(G, car, 20).plan(0, 11, 1.0, 0.1, algorithm=algorithm)
-    assert (
-        r.time_s >= ref.time_s * 0.99
-    )  # nessun algoritmo può battere l'ottimo (tolleranza di discretizzazione)
+    assert r.time_s >= ref.time_s * 0.99  # no algorithm can beat the optimum (discretisation tolerance)
 
 
 def hill(rise_m):
-    """Strada di 60 km (7 nodi) con una colonnina a metà, che sale di `rise_m` da un capo all'altro."""
+    """A 60 km road (7 nodes) with a charger halfway, climbing `rise_m` from one end to the other."""
     G = line(7, stations=[3])
     for n in G.nodes:
         G.nodes[n]["elevation"] = rise_m * n / 6
@@ -238,14 +236,17 @@ def test_elevation_can_be_switched_off_to_compare():
 
 def test_a_climb_that_does_not_fit_in_the_battery_forces_a_stop():
     kw = {"start_soc": 1.0, "min_soc": 0.1, "algorithm": "astar_potential"}
-    assert Planner(hill(0), CAR, 20).plan(0, 6, **kw).charges == []  # in piano ci si arriva senza fermarsi
-    assert Planner(hill(400), CAR, 20).plan(0, 6, **kw).charges  # in salita no
-    assert Planner(hill(-400), CAR, 20).plan(0, 6, **kw).charges == []  # in discesa meno ancora
+    assert Planner(hill(0), CAR, 20).plan(0, 6, **kw).charges == []  # on the flat it arrives without stopping
+    assert Planner(hill(400), CAR, 20).plan(0, 6, **kw).charges  # uphill it does not
+    assert Planner(hill(-400), CAR, 20).plan(0, 6, **kw).charges == []  # downhill even less
 
 
 def test_unreasonable_dem_glitches_are_limited_to_a_plausible_grade():
     G = line(2)
-    G.nodes[0]["elevation"], G.nodes[1]["elevation"] = 0.0, 9000.0  # un buco nel DEM: 9 km di salita in 10 km
+    G.nodes[0]["elevation"], G.nodes[1]["elevation"] = (
+        0.0,
+        9000.0,
+    )  # a hole in the DEM: 9 km of climb in 10 km
     arc = Planner(G, CAR, 20)._edges(0)[0]
     capped = CAR.edge_energy_kwh(10_000, 100, 360, 20, rise_m=0.12 * 10_000)
     assert arc[3] == pytest.approx(capped)
@@ -257,9 +258,9 @@ def test_the_saved_table_knows_about_elevation(tmp_path):
 
 
 def test_naive_driver_skips_a_much_slower_charger_when_a_decent_one_is_reachable():
-    G = line(9, stations=[])  # 80 km: serve una sosta
-    G.nodes[5]["charger_kw"] = 3.7  # più vicina alla meta ma lentissima
-    G.nodes[4]["charger_kw"] = 50  # un po' più indietro, veloce
+    G = line(9, stations=[])  # 80 km: a stop is needed
+    G.nodes[5]["charger_kw"] = 3.7  # nearer the goal but very slow
+    G.nodes[4]["charger_kw"] = 50  # a bit further back, fast
     r = Planner(G, CAR, 20).plan(0, 8, 1.0, 0.1, algorithm="greedy")
     assert [c[0] for c in r.charges] == [4]
 

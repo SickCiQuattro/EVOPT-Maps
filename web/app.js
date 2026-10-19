@@ -173,7 +173,7 @@ async function poll(id, jobId) {
 }
 async function pollCompare(id, jobId, job) {
   for (;;) {
-    if (id !== state.job) return; // si è passati a un altro piano
+    if (id !== state.job) return; // another plan has taken over
     if (job.compare === "running") {
       const [done, total] = job.compare_progress;
       showCompare("pending", `${done} of ${total || state.algorithms.length} algorithms done.`);

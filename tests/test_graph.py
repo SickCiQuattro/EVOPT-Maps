@@ -16,4 +16,4 @@ def test_path_coords_follow_edge_geometry_when_present():
     assert path_coords(G, [1, 0])[0] == (
         45.0,
         0.1,
-    )  # l'arco 1->0 ha la stessa geometria, ma l'ordine segue il viaggio
+    )  # edge 1->0 has the same geometry, but the order follows the trip

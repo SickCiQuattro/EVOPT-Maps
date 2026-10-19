@@ -12,12 +12,12 @@ from evopt.graph import haversine_m, load_graph
 from evopt.stations import apply_stations, fetch_ocm, fetch_osm, load_stations, merge, save_stations
 
 DATA_DIR = Path("data")
-GRAPH_TTL_DAYS = 30  # le strade cambiano piano e il download pesa
-STATIONS_TTL_DAYS = 7  # le colonnine cambiano più spesso
+GRAPH_TTL_DAYS = 30  # roads change slowly and the download is heavy
+STATIONS_TTL_DAYS = 7  # chargers change more often
 
 
 def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
-    """Grafo di `place` con le stazioni (OSM, più OCM se c'è OCM_API_KEY) sui nodi 'charger_kw'."""
+    """Graph of `place` with stations (OSM, plus OCM when OCM_API_KEY is set) as 'charger_kw' on nodes."""
     progress = progress or (lambda stage: None)
     if place.startswith("local:"):
         return _load_local(place[len("local:") :], progress, Path(data_dir), Path(cache_dir))
@@ -30,9 +30,9 @@ def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
         ox.load_graphml,
         ox.save_graphml,
     )
-    ensure_elevation(G, cache_dir)  # no-op se il grafo salvato ha già le quote
+    ensure_elevation(G, cache_dir)  # no-op if the saved graph already has elevations
     progress("stations")
-    # il grafo in cache non contiene stazioni: si applicano ogni volta, così scadono per conto loro
+    # the cached graph holds no stations: they are applied on every load so they expire on their own
     stations = cached(
         cache_dir / f"stations-osm-{key}.json",
         STATIONS_TTL_DAYS,
@@ -52,14 +52,14 @@ def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
                 save_stations,
             )
             stations = merge(stations, ocm)
-        except OSError as e:  # rete assente o Open Charge Map non raggiungibile
-            warnings.warn(f"Open Charge Map non disponibile ({e}): uso solo OpenStreetMap", stacklevel=2)
+        except OSError as e:  # no network, or Open Charge Map unreachable
+            warnings.warn(f"Open Charge Map unavailable ({e}): using OpenStreetMap only", stacklevel=2)
     apply_stations(G, stations)
     return G
 
 
 def _circle(G):
-    """Centro e raggio (km) che coprono tutti i nodi."""
+    """Centre and radius (km) covering every node."""
     ys = np.array([d["y"] for _, d in G.nodes(data=True)])
     xs = np.array([d["x"] for _, d in G.nodes(data=True)])
     lat, lon = ys.mean(), xs.mean()
@@ -67,7 +67,7 @@ def _circle(G):
 
 
 def _load_local(name, progress, data_dir, cache_dir):
-    """Estratto locale prodotto da `benchmarks.extract`; con OCM_API_KEY si completa con Open Charge Map."""
+    """Local extract made by `benchmarks.extract`; with OCM_API_KEY it is completed with Open Charge Map."""
     graph, stations = data_dir / f"{name}.graphml", data_dir / f"{name}-stations.json"
     if not graph.exists():
         raise FileNotFoundError(
@@ -90,13 +90,13 @@ def _load_local(name, progress, data_dir, cache_dir):
             )
             found = merge(found, ocm)
         except OSError as e:
-            warnings.warn(f"Open Charge Map non disponibile ({e}): uso solo l'estratto", stacklevel=3)
+            warnings.warn(f"Open Charge Map unavailable ({e}): using the extract only", stacklevel=3)
     apply_stations(G, found)
     return G
 
 
 def _ocm_tiles(G, step_km=25.0):
-    """Open Charge Map risponde per cerchio e con un tetto di risultati: un'area lunga si copre a tessere."""
+    """Open Charge Map answers per circle with a result cap, so a long area is covered in tiles."""
     ys = [d["y"] for _, d in G.nodes(data=True)]
     xs = [d["x"] for _, d in G.nodes(data=True)]
     dlat = step_km / 111.0
@@ -117,7 +117,7 @@ def _ocm_tiles(G, step_km=25.0):
 
 
 def _with_elevation(G, cache_dir):
-    """Quote nel grafo prima che finisca in cache; se i tile non ci sono, ensure_elevation riprova al prossimo carico."""
+    """Add elevations before the graph is cached; if tiles are missing, ensure_elevation retries on the next load."""
     try:
         add_node_elevations(G, cache_dir)
     except OSError:

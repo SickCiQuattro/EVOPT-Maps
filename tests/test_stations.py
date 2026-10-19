@@ -53,7 +53,7 @@ def test_merge_fills_missing_power_from_ocm_and_adds_unknown_stations():
 
 
 def test_apply_stations_snaps_to_nodes_keeps_max_and_defaults_unknown_power():
-    G = line(5)  # nodi a lon 0, 0.1 ... 0.4, lat 45.0
+    G = line(5)  # nodes at lon 0, 0.1 ... 0.4, lat 45.0
     apply_stations(
         G, [Station(45.0, 0.1, 7), Station(45.0, 0.1001, 50), Station(45.0, 0.3, None)], default_kw=22
     )
@@ -81,7 +81,7 @@ def test_dc_sockets_hint_at_a_fast_charger_when_power_is_missing():
 
     assert estimate_kw({"socket:type2_combo": "2"}) == 50
     assert estimate_kw({"socket:chademo": "1", "socket:type2": "1"}) == 50
-    assert estimate_kw({"socket:type2": "2"}) is None  # alternata: potenza troppo variabile per stimarla
+    assert estimate_kw({"socket:type2": "2"}) is None  # AC: power varies too much to estimate
     assert estimate_kw({"socket:type2_combo": float("nan")}) is None
     assert estimate_kw({}) is None
 
@@ -121,5 +121,5 @@ def test_stations_file_roundtrip_with_labels_and_old_files(tmp_path):
     stations = [Station(45.0, 9.0, None, "Ionity", 50), Station(45.1, 9.1, 22.0)]
     save_stations(stations, tmp_path / "s.json")
     assert load_stations(tmp_path / "s.json") == stations
-    (tmp_path / "old.json").write_text("[[45.0, 9.0, 22.0]]")  # formato precedente: tre valori
+    (tmp_path / "old.json").write_text("[[45.0, 9.0, 22.0]]")  # previous format: three values
     assert load_stations(tmp_path / "old.json") == [Station(45.0, 9.0, 22.0)]

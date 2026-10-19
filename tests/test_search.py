@@ -47,7 +47,7 @@ def test_ara_star_improves_monotonically_and_ends_optimal():
 
 def test_ara_star_reuses_work_between_rounds():
     steps = list(ara_star(G, START, GOAL, eps=3.0, decrease=1.0))
-    total = steps[-1].expanded  # contatore cumulativo
+    total = steps[-1].expanded  # cumulative counter
     from_scratch = sum(astar(G, START, GOAL, weight=s.eps).expanded for s in steps)
     assert total < from_scratch
 
@@ -75,6 +75,6 @@ def test_alt_heuristic_is_admissible_for_every_node():
     from evopt.search import alt_heuristic
 
     h = alt_heuristic(G, GOAL, lm)
-    exact = dijkstra  # distanza vera da n al goal
+    exact = dijkstra  # true distance from n to the goal
     for n in list(G.nodes)[::7]:
         assert h(n) <= exact(G, n, GOAL).time_s + 1e-6 if n != GOAL else h(n) == 0

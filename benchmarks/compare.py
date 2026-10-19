@@ -1,9 +1,9 @@
-"""Confronta gli algoritmi di pianificazione su griglie sintetiche e, se in cache, su una città reale.
+"""Compare the planning algorithms on synthetic grids and, when available, on real roads.
 
-Uso: uv run python -m benchmarks.compare [--real "Pieve Emanuele, Italy"]
+Usage: uv run python -m benchmarks.compare [--real "Pieve Emanuele, Italy"] [--local milano-torino]
 
-La prima ricerca di un Planner paga i tratti tra le stazioni che espande; la si misura a parte ("cold")
-e poi tutti gli algoritmi girano a cache parziale ma calda, così il confronto è equo.
+A Planner's first search pays for the legs of the chargers it expands, so it is measured separately ("cold");
+then every algorithm runs on a partly filled, warm table, which keeps the comparison fair.
 """
 
 import argparse
@@ -64,7 +64,7 @@ def run(
 
 
 def road_level(G, a, b):
-    """Percorso più veloce tra due nodi sulla rete stradale: stati espansi dei diversi algoritmi."""
+    """Fastest route between two nodes of the road network: states expanded by each algorithm."""
     t = time.perf_counter()
     landmarks = alt_landmarks(G, k=8)
     print(f"ALT preprocessing, built once: {(time.perf_counter() - t) * 1000:.0f} ms (8 landmarks)\n")
@@ -92,7 +92,7 @@ def local(name, origin, target, vehicle, temp_c, start_soc, min_soc, legs):
     from evopt.data import load_network
     from evopt.graph import nearest_node
 
-    G = load_network(f"local:{name}")  # con OCM_API_KEY completa le stazioni con Open Charge Map
+    G = load_network(f"local:{name}")  # with OCM_API_KEY the stations are completed from Open Charge Map
     chargers = sum("charger_kw" in d for _, d in G.nodes(data=True))
     a, b = nearest_node(G, *origin), nearest_node(G, *target)
     print(f"\n### {name}: {len(G)} nodes, {G.number_of_edges()} edges, {chargers} charger nodes\n")

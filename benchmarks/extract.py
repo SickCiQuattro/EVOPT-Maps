@@ -1,12 +1,12 @@
-"""Estrae da un file OSM locale (.pbf, es. Geofabrik) una rete stradale e le stazioni di ricarica per un'area.
+"""Extract a road network and charging stations for an area from a local OSM file (.pbf, e.g. Geofabrik).
 
-Niente Overpass: serve per testare viaggi realistici su aree grandi.
+No Overpass: it lets you test realistic trips on large areas.
 
     uv run --with osmium python -m benchmarks.extract data/nord-ovest.osm.pbf \\
         --bbox 7.4 44.9 9.5 45.7 --name milano-torino
 
-Scrive data/<name>.graphml (strade) e data/<name>-stations.json. La rete tiene solo le strade principali
-(autostrade, superstrade, strade statali e provinciali) e contrae i nodi che non sono incroci.
+Writes data/<name>.graphml (roads) and data/<name>-stations.json. The network keeps only the main roads
+(motorways, trunk, primary and secondary roads) and contracts the nodes that are not junctions.
 """
 
 import argparse
@@ -38,7 +38,7 @@ def _oneway(tags):
 
 
 def read(pbf, bbox):
-    import osmium  # solo qui: build() e il resto si provano anche senza pyosmium
+    import osmium  # only here: build() and the rest can be tested without pyosmium
 
     west, south, east, north = bbox
     inside = lambda loc: west <= loc.lon <= east and south <= loc.lat <= north
@@ -63,7 +63,7 @@ def read(pbf, bbox):
 
 
 def build(ways):
-    """Grafo orientato: un arco per tratto tra due incroci, con lunghezza, velocità, tempo e geometria."""
+    """Directed graph: one edge per stretch between two junctions, with length, speed, time and geometry."""
     uses = Counter(ref for pts, _ in ways for ref, _, _ in pts)
     G = nx.MultiDiGraph(crs="epsg:4326")
     for pts, tags in ways:
@@ -83,7 +83,7 @@ def build(ways):
                 G.add_edge(
                     seg[-1][0], seg[0][0], **(edge | {"geometry": LineString(list(geom.coords)[::-1])})
                 )
-    # componente fortemente connessa maggiore: il resto sono isole che non servono a nessun viaggio
+    # largest strongly connected component: the rest are islands no trip can use
     core = max(nx.strongly_connected_components(nx.DiGraph(G)), key=len)
     return G.subgraph(core).copy()
 

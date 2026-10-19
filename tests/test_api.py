@@ -52,7 +52,7 @@ def body(**kw):
 
 
 def run_compare(client, **kw):
-    """Piano con confronto: il percorso arriva per primo, il confronto subito dopo."""
+    """Plan with comparison: the route arrives first, the comparison right after."""
     job = run(client, compare=True, **kw)
     for _ in range(200):
         if job["compare"] in ("done", "error"):
@@ -213,10 +213,10 @@ def test_missing_local_extract_is_reported_with_how_to_fix_it(client, monkeypatc
 def test_station_legs_survive_a_restart(client):
     run(client)
     assert list(api.CACHE_DIR.glob("legs-*.pkl"))
-    api.PLANNERS.clear()  # come dopo un riavvio del server
+    api.PLANNERS.clear()  # as after a server restart
     run(client)
     (planner,) = api.PLANNERS.values()
-    assert planner.leg_searches == 2  # partenza e arrivo; i tratti tra stazioni vengono dal disco
+    assert planner.leg_searches == 2  # start and goal only; the legs between chargers come from disk
 
 
 def test_without_compare_there_is_no_comparison_state(client):
@@ -228,7 +228,7 @@ def test_summary_reports_net_climb_and_highest_point_when_the_map_has_elevation(
     def hilly(place, progress=None):
         G = line(12, stations=[6])
         for n in G.nodes:
-            G.nodes[n]["elevation"] = 10.0 * n  # sale di 10 m a nodo: 0 m alla partenza, 110 m all'arrivo
+            G.nodes[n]["elevation"] = 10.0 * n  # climbs 10 m per node: 0 m at the start, 110 m at the goal
         return G
 
     monkeypatch.setattr(api, "load_network", hilly)
@@ -244,4 +244,4 @@ def test_summary_has_no_elevation_figures_on_a_flat_map(client):
 def test_elevation_can_be_switched_off_per_request(client):
     run(client)
     run(client, elevation=False)
-    assert len(api.PLANNERS) == 2  # un Planner con le quote e uno senza: tabelle dei tratti diverse
+    assert len(api.PLANNERS) == 2  # one Planner with elevations and one without: different leg tables

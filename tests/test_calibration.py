@@ -7,18 +7,18 @@ from evopt.vehicle import VEHICLES
 @pytest.mark.parametrize("name", REFERENCE)
 def test_calibrated_vehicles_reproduce_the_reference_consumption(name):
     rows = compare(name, VEHICLES[name])
-    for point in ("autostrada mite (adattato)", "autostrada freddo (adattato)"):
+    for point in ("motorway, mild (fitted)", "motorway, cold (fitted)"):
         got, want = rows[point]
         assert got == pytest.approx(want, rel=0.01), point
-    for point in ("autonomia autostrada mite (km)", "autonomia autostrada freddo (km)"):
+    for point in ("motorway range, mild (km)", "motorway range, cold (km)"):
         got, want = rows[point]
         assert got == pytest.approx(want, rel=0.02), point
 
 
 @pytest.mark.parametrize("name", REFERENCE)
 def test_calibration_holds_on_points_it_was_not_fitted_on(name):
-    """Il consumo urbano al freddo non entra nell'adattamento: lo prevede il modello."""
-    got, want = compare(name, VEHICLES[name])["città freddo, a 50 km/h (verifica)"]
+    """Urban consumption in the cold is not part of the fit: the model predicts it."""
+    got, want = compare(name, VEHICLES[name])["city, cold, at 50 km/h (held out)"]
     assert got == pytest.approx(want, rel=0.06)
 
 

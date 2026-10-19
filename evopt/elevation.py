@@ -1,7 +1,7 @@
-"""Quota dei nodi da tile Terrarium (AWS Open Data, senza chiave né login).
+"""Node elevations from Terrarium tiles (AWS Open Data, no key or login).
 
-Ogni tile è un PNG 256x256 in cui R, G e B codificano la quota: R*256 + G + B/256 - 32768 metri.
-Risoluzione circa 30 m al livello 12, la stessa delle fonti da cui derivano (SRTM tra le altre).
+Each tile is a 256x256 PNG whose R, G and B encode elevation: R*256 + G + B/256 - 32768 metres.
+Resolution is about 30 m at zoom 12, the same as the sources it derives from (SRTM among others).
 """
 
 import math
@@ -25,7 +25,7 @@ def _http_get(url):
 
 
 def pixel(lat, lon, z=ZOOM):
-    """Coordinate continue in pixel globali (Web Mercator) di un punto."""
+    """Continuous global pixel coordinates (Web Mercator) of a point."""
     n = SIZE * 2**z
     return (lon + 180) / 360 * n, (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
 
@@ -43,7 +43,7 @@ def decode(png_bytes):
 
 
 class Dem:
-    """Campionatore di quote con tile scaricati una volta e tenuti in `cache_dir/dem`."""
+    """Elevation sampler; tiles are downloaded once and kept in `cache_dir/dem`."""
 
     def __init__(self, cache_dir, zoom=ZOOM, fetch=None):
         self.dir, self.z, self.fetch = Path(cache_dir) / "dem", zoom, fetch or _http_get
@@ -59,7 +59,7 @@ class Dem:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = path.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_bytes(data)
-                tmp.replace(path)  # mai un file a metà in cache
+                tmp.replace(path)  # never a half-written file in the cache
             self._tiles[(tx, ty)] = decode(data)
         return self._tiles[(tx, ty)]
 
@@ -67,7 +67,7 @@ class Dem:
         return float(self.tile(ix // SIZE, iy // SIZE)[iy % SIZE, ix % SIZE])
 
     def at(self, lat, lon):
-        """Quota in metri, interpolando bilinearmente tra i centri dei quattro pixel vicini."""
+        """Elevation in metres, bilinearly interpolated between the centres of the four nearest pixels."""
         x, y = pixel(lat, lon, self.z)
         fx, fy = x - 0.5, y - 0.5
         x0, y0 = math.floor(fx), math.floor(fy)
@@ -83,11 +83,11 @@ class Dem:
 
 
 def smooth(G, passes=3):
-    """Leviga le quote lungo la rete: ogni nodo con almeno due vicini si media con i vicini.
+    """Smooth elevations along the network: each node with at least two neighbours is averaged with them.
 
-    Il rumore del DEM (ponti e viadotti letti come buche) farebbe pagare salite finte per intero e restituire
-    le discese solo in parte, cioè un consumo in più su strade piatte. Una pendenza costante resta invariata.
-    Gli estremi e i nodi isolati non cambiano (mediarli sposterebbe una rampa).
+    DEM noise (bridges and viaducts read as dips) would charge fake climbs in full and refund descents
+    only partly, i.e. extra consumption on flat roads. A constant slope is left unchanged.
+    Endpoints and isolated nodes do not change (averaging them would shift a ramp).
     """
     nbrs = {n: (set(G.successors(n)) | set(G.predecessors(n))) - {n} for n in G}
     cur = {n: d["elevation"] for n, d in G.nodes(data=True) if "elevation" in d}
@@ -103,7 +103,7 @@ def smooth(G, passes=3):
 
 
 def add_node_elevations(G, cache_dir, fetch=None, zoom=ZOOM, workers=8, passes=3):
-    """Imposta 'elevation' (m) sui nodi che ne sono privi. Se un tile non si scarica, il grafo resta com'era."""
+    """Set 'elevation' (m) on nodes that lack it. If a tile fails to download the graph is left as it was."""
     todo = [n for n, d in G.nodes(data=True) if "elevation" not in d]
     if not todo:
         return
@@ -112,11 +112,11 @@ def add_node_elevations(G, cache_dir, fetch=None, zoom=ZOOM, workers=8, passes=3
     for n in todo:
         needed |= dem.tiles_for(G.nodes[n]["y"], G.nodes[n]["x"])
     with ThreadPoolExecutor(workers) as pool:
-        list(pool.map(lambda t: dem.tile(*t), sorted(needed)))  # propaga l'OSError di un download fallito
+        list(pool.map(lambda t: dem.tile(*t), sorted(needed)))  # surfaces the OSError of a failed download
     values = {n: round(dem.at(G.nodes[n]["y"], G.nodes[n]["x"]), 1) for n in todo}
     for n, v in values.items():
         G.nodes[n]["elevation"] = v
     if (
         passes and len(todo) == G.number_of_nodes()
-    ):  # una rete annotata a metà non si leviga: mescolerebbe fonti
+    ):  # a half-annotated network is not smoothed: it would mix sources
         smooth(G, passes)

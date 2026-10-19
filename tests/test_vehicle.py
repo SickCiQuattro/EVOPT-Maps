@@ -5,7 +5,7 @@ from evopt.vehicle import VEHICLES, Vehicle
 
 def test_consumption_is_plausible_at_90_kph():
     car = VEHICLES["Tesla Model 3 Standard Range Plus"]
-    kwh_per_km = car.edge_energy_kwh(1000, 90, 40)  # 1 km a 90 km/h = 40 s
+    kwh_per_km = car.edge_energy_kwh(1000, 90, 40)  # 1 km at 90 km/h = 40 s
     assert 0.09 < kwh_per_km < 0.18
 
 
@@ -29,8 +29,8 @@ def test_dc_charging_power_tapers_above_the_knee_and_ac_does_not():
         1.0, 100
     ) == pytest.approx(30)
     assert car.charge_power_kw(0.95, 100) < car.charge_power_kw(0.85, 100)
-    assert car.charge_power_kw(0.95, 22) == 22  # in alternata la potenza resta costante
-    assert car.charge_power_kw(0.5, 50) == 50  # limitata dalla colonnina
+    assert car.charge_power_kw(0.95, 22) == 22  # on AC the power stays constant
+    assert car.charge_power_kw(0.5, 50) == 50  # limited by the charger
 
 
 def test_no_taper_by_default():
@@ -43,7 +43,7 @@ def test_climbing_costs_potential_energy_over_drivetrain_efficiency():
     car = Vehicle(capacity_kwh=50, mass_kg=1500, cda=0.6, max_charge_kw=100)
     flat = car.edge_energy_kwh(5000, 90, 200)
     up = car.edge_energy_kwh(5000, 90, 200, rise_m=100)
-    assert up - flat == pytest.approx(1500 * 9.81 * 100 / 3.6e6 / 0.85, rel=1e-6)  # circa 0,48 kWh
+    assert up - flat == pytest.approx(1500 * 9.81 * 100 / 3.6e6 / 0.85, rel=1e-6)  # about 0.48 kWh
 
 
 def test_descending_recovers_part_of_the_energy_but_never_goes_negative():
@@ -51,7 +51,7 @@ def test_descending_recovers_part_of_the_energy_but_never_goes_negative():
     flat = car.edge_energy_kwh(5000, 90, 200)
     down = car.edge_energy_kwh(5000, 90, 200, rise_m=-20)
     assert 0 < down < flat
-    # shortcut: in discesa la trazione non ricarica la batteria; restano solo i servizi di bordo
+    # shortcut: on a descent traction does not charge the battery; only the auxiliary load remains
     assert car.edge_energy_kwh(5000, 90, 200, rise_m=-500) == pytest.approx(car.aux_kw(20) * 200 / 3600)
     assert flat - down == pytest.approx(1500 * 9.81 * 20 / 3.6e6 * car.regen_eff, rel=1e-6)
 
@@ -72,7 +72,7 @@ def test_cold_penalty_is_per_kilometre_and_zero_above_the_comfort_temperature():
     assert car.edge_energy_kwh(10_000, 90, 400, temp_c=-10) - base == pytest.approx(0.002 * 10 * 28)
     assert car.edge_energy_kwh(20_000, 90, 800, temp_c=-10) - car.edge_energy_kwh(
         20_000, 90, 800, 20
-    ) == pytest.approx(2 * 0.002 * 10 * 28)  # raddoppia con la distanza, non con il tempo
+    ) == pytest.approx(2 * 0.002 * 10 * 28)  # doubles with distance, not with time
 
 
 def test_defaults_keep_the_original_time_based_climate_load():
@@ -97,6 +97,6 @@ def test_stop_and_go_overhead_applies_only_below_the_urban_speed_and_scales_with
         car.edge_energy_kwh(m, kph, m / (kph / 3.6)) - plain.edge_energy_kwh(m, kph, m / (kph / 3.6))
     )
     assert extra(70) == pytest.approx(0) and extra(120) == pytest.approx(0)
-    assert extra(50) == pytest.approx(0.03, rel=1e-6)  # per definizione: il sovraccosto a 50 km/h
+    assert extra(50) == pytest.approx(0.03, rel=1e-6)  # by definition: the overhead at 50 km/h
     assert extra(30) > extra(50) > extra(60) > 0
     assert extra(50, 3000) == pytest.approx(3 * extra(50))

@@ -29,9 +29,9 @@ DC_SOCKETS = (
 class Station:
     lat: float
     lon: float
-    kw: float | None  # None se la fonte non indica la potenza
-    label: str | None = None  # "operatore · nome", se la fonte li ha
-    hint: float | None = None  # potenza stimata dalle prese, usata solo se kw manca
+    kw: float | None  # None when the source gives no power
+    label: str | None = None  # "operator · name", when the source has them
+    hint: float | None = None  # power estimated from the sockets, used only when kw is missing
 
 
 def _text(value):
@@ -44,15 +44,15 @@ def label_of(tags):
 
 
 def estimate_kw(tags):
-    """Colonnine senza potenza: le prese in continua (CCS, CHAdeMO) indicano una ricarica rapida, circa 50 kW.
+    """Chargers without power: DC sockets (CCS, CHAdeMO) mean fast charging, about 50 kW.
 
-    shortcut: 50 kW è un valore prudente per la rapida; in alternata la potenza varia troppo per stimarla.
+    shortcut: 50 kW is a prudent figure for fast charging; AC power varies too much to estimate.
     """
     return 50.0 if any(_text(tags.get(k)) not in (None, "0", "no") for k in DC_SOCKETS) else None
 
 
 def power_kw(tags):
-    """Potenza massima dai tag OSM '*output' (es. '22 kW', '7,4 kW'). Si assume kW, come da convenzione OSM."""
+    """Maximum power from the OSM '*output' tags (e.g. '22 kW', '7,4 kW'). Assumes kW, the OSM convention."""
     values = []
     for key, raw in tags.items():
         if key.endswith("output") and isinstance(raw, str) and (m := _NUMBER.match(raw.strip())):
@@ -68,7 +68,7 @@ def station_from_tags(lat, lon, tags):
 def osm_to_stations(gdf):
     stations = []
     for _, row in gdf.iterrows():
-        p = row.geometry.representative_point()  # i poligoni (aree di ricarica) diventano un punto
+        p = row.geometry.representative_point()  # polygons (charging areas) become a point
         stations.append(station_from_tags(p.y, p.x, row.drop("geometry").to_dict()))
     return stations
 
@@ -95,7 +95,7 @@ def parse_ocm(items):
 def fetch_ocm(lat, lon, radius_km, api_key=None, max_results=1000):
     key = api_key or os.environ.get("OCM_API_KEY")
     if not key:
-        raise ValueError("serve una chiave Open Charge Map: passa api_key o imposta OCM_API_KEY")
+        raise ValueError("an Open Charge Map key is required: pass api_key or set OCM_API_KEY")
     query = urllib.parse.urlencode(
         {
             "output": "json",
@@ -115,7 +115,7 @@ def fetch_ocm(lat, lon, radius_km, api_key=None, max_results=1000):
 
 
 def merge(osm, ocm, match_m=100):
-    """OSM come base; potenza ed etichetta mancanti arrivano da OCM, le stazioni solo in OCM vengono aggiunte."""
+    """OSM as the base; missing power and label come from OCM, stations only in OCM are added."""
     if not ocm:
         return list(osm)
     o_lat, o_lon = np.array([s.lat for s in osm]), np.array([s.lon for s in osm])
@@ -133,7 +133,7 @@ def merge(osm, ocm, match_m=100):
 
 
 def apply_stations(G, stations, default_kw=22.0, max_snap_m=200):
-    """Marca i nodi più vicini con 'charger_kw'. Scarta le stazioni troppo lontane da una strada."""
+    """Mark the nearest nodes with 'charger_kw'. Stations too far from any road are dropped."""
     found = nearest_nodes(G, [(s.lat, s.lon) for s in stations])
     for s, (node, dist) in zip(stations, found):
         if dist <= max_snap_m:

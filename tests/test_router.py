@@ -9,7 +9,7 @@ CAR = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=50)
 
 
 def line(n, stations=(), both_ways=True):
-    """Strada dritta di n nodi a 10 km l'uno dall'altro, percorsa a 100 km/h."""
+    """Straight road of n nodes 10 km apart, driven at 100 km/h."""
     G = nx.MultiDiGraph()
     for i in range(n):
         G.add_node(i, x=0.1 * i, y=45.0)
@@ -57,7 +57,7 @@ def test_one_way_streets_are_respected():
 
 
 def test_min_arrival_soc_is_honoured():
-    # 5 tratti consumano ~6.6 kWh su 10: con riserva 50% serve la stazione
+    # 5 legs use ~6.6 kWh of 10: with a 50% reserve the charger is needed
     G = line(6, stations=[3])
     assert plan_route(G, 0, 5, CAR, min_soc=0.1).charges == []
     assert plan_route(G, 0, 5, CAR, min_soc=0.5).charges != []
