@@ -14,11 +14,12 @@ from collections import namedtuple
 from evopt.router import NoRouteError, Route
 from evopt.search import INF, _hav, ara, search, straight_speed, time_heuristic
 
-ALGORITHMS = ("dijkstra", "astar", "astar_energy", "wastar", "ara", "greedy", "exact")
+ALGORITHMS = ("dijkstra", "astar", "astar_energy", "astar_potential", "wastar", "ara", "greedy", "exact")
 ALGORITHM_INFO = {
     "dijkstra": ("Dijkstra", "Optimal. Uninformed: expands states in order of cost only."),
     "astar": ("A*", "Optimal. Guided by the straight-line travel time to the destination."),
     "astar_energy": ("A*, energy-aware", "Optimal. Also counts the minimum charging time still needed to cover the distance."),
+    "astar_potential": ("A*, exact potentials", "Optimal. Uses the true minimum drive time and energy to the goal, from a backward search."),
     "wastar": ("Weighted A* (w=2)", "Fast, at most 2x the optimal trip. Inflates the heuristic."),
     "ara": ("ARA*", "Anytime: a quick answer first, then improved step by step until provably optimal."),
     "greedy": ("Naive driver", "Baseline: heads for the charger nearest the destination and charges to 80% every time."),
@@ -31,12 +32,16 @@ GOAL = (-1, -1)  # stato terminale: raggiunto il goal con qualunque carica
 class Planner:
     """Pianifica viaggi su un grafo per un veicolo e una temperatura, riusando i tratti tra stazioni."""
 
-    def __init__(self, G, vehicle, temp_c=20, steps=100, legs="fastest"):
+    def __init__(self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True):
         if legs not in ("fastest", "pareto"):
             raise ValueError("legs must be 'fastest' or 'pareto'")
         self.G, self.vehicle, self.temp_c, self.steps, self.legs_mode = G, vehicle, temp_c, steps, legs
         self.stations = frozenset(n for n, d in G.nodes(data=True) if "charger_kw" in d)
         self.unit = vehicle.capacity_kwh / steps
+        self.dominance = (
+            dominance  # scarta (nodo, livello) battuti da uno stato chiuso con più carica e costo minore
+        )
+        self._potential_cache = {}
         self.leg_searches = 0  # ricerche sul grafo stradale eseguite finora
         self._min_kwh_per_m = None
         self._table = {}  # stazione -> {stazione: [Leg]} (valido finché grafo, veicolo e temperatura restano gli stessi)
@@ -153,7 +158,7 @@ class Planner:
         }
         return edges, int(start_soc * self.steps + 1e-9), math.ceil(min_soc * self.steps - 1e-9)
 
-    def _state_graph(self, start, goal, start_soc, min_soc):
+    def _state_graph(self, start, goal, start_soc, min_soc, need_potential=False):
         t0 = time.perf_counter()
         edges, level0, min_level = self._reduced(start, goal, start_soc, min_soc)
         steps, stations = self.steps, self.stations
@@ -170,9 +175,39 @@ class Planner:
                 if level - need >= min_level:
                     yield (b, level - need), leg.time_s, ("drive", leg)
 
-        return succ, (start, level0), self._heuristics(goal, min_level), (time.perf_counter() - t0) * 1000
+        return (
+            succ,
+            (start, level0),
+            self._heuristics(goal, min_level, need_potential),
+            (time.perf_counter() - t0) * 1000,
+        )
 
-    def _heuristics(self, goal, min_level):
+    def _potentials(self, goal):
+        """Tempo minimo e energia minima da ogni nodo a `goal`: due ricerche all'indietro sul grafo stradale."""
+        if goal not in self._potential_cache:
+            self._potential_cache[goal] = (
+                self._backward(goal, lambda d: d["travel_time"]),
+                self._backward(goal, self._energy),
+            )
+            while len(self._potential_cache) > 8:
+                del self._potential_cache[next(iter(self._potential_cache))]
+        return self._potential_cache[goal]
+
+    def _backward(self, goal, weight):
+        dist, done, heap = {goal: 0.0}, set(), [(0.0, goal)]
+        while heap:
+            w, u = heapq.heappop(heap)
+            if u in done:
+                continue
+            done.add(u)
+            for p, _, d in self.G.in_edges(u, data=True):
+                nw = w + weight(d)
+                if nw < dist.get(p, INF):
+                    dist[p] = nw
+                    heapq.heappush(heap, (nw, p))
+        return dist
+
+    def _heuristics(self, goal, min_level, need_potential=False):
         """Euristiche consistenti sullo stato (nodo, livello): solo tempo, oppure tempo + ricarica minima ancora necessaria."""
         G, unit = self.G, self.unit
         if self._min_kwh_per_m is None:
@@ -202,10 +237,24 @@ class Planner:
             deficit = e_min * meters - (level - min_level) * unit
             return meters / speed + max(0.0, deficit) / p_max * 3600
 
-        return {"none": lambda s: 0.0, "time": time_only, "energy": with_energy}
+        def potential(state):
+            if state == GOAL:
+                return 0.0
+            node, level = state
+            t = times.get(node)
+            if t is None:
+                return INF  # da qui il goal non si raggiunge
+            deficit = energies[node] - (level - min_level) * unit
+            return t + max(0.0, deficit) / p_max * 3600
+
+        h = {"none": lambda s: 0.0, "time": time_only, "energy": with_energy}
+        if need_potential:
+            times, energies = self._potentials(goal)
+            h["potential"] = potential
+        return h
 
     def _run(self, start, goal, start_soc, min_soc, heuristic, weight=1.0, anytime=None):
-        succ, src, hs, prep_ms = self._state_graph(start, goal, start_soc, min_soc)
+        succ, src, hs, prep_ms = self._state_graph(start, goal, start_soc, min_soc, heuristic == "potential")
         h = hs[heuristic]
         t0 = time.perf_counter()
         history = []
@@ -215,7 +264,7 @@ class Planner:
                 history.append({"eps": found.eps, "bound": found.bound, "time_s": found.cost, "expanded": found.expanded,
                                 "ms": (time.perf_counter() - t0) * 1000})  # fmt: skip
         else:
-            found = search(succ, src, GOAL, h, weight)
+            found = search(succ, src, GOAL, h, weight, self._prune() if self.dominance else None)
         if found is None:
             raise NoRouteError("no route with this battery and these stations")
         route = self._build(found)
@@ -223,6 +272,22 @@ class Planner:
         route.stats.update(expanded=found.expanded, bound=found.bound, eps=found.eps, prep_ms=prep_ms,
                            search_ms=(time.perf_counter() - t0) * 1000)  # fmt: skip
         return route
+
+    def _prune(self):
+        best = {}  # nodo -> suffisso dei minimi: best[l] = g minimo tra gli stati chiusi con livello >= l
+
+        def prune(state, g):
+            if state == GOAL:
+                return False
+            node, level = state
+            suffix = best.setdefault(node, [INF] * (self.steps + 1))
+            if g >= suffix[level] - 1e-9:
+                return True
+            for lv in range(level + 1):
+                suffix[lv] = min(suffix[lv], g)
+            return False
+
+        return prune
 
     def _build(self, found):
         path, dist, charges = [], 0.0, []
@@ -251,12 +316,15 @@ class Planner:
     def _plan_astar_energy(self, start, goal, start_soc, min_soc):
         return self._run(start, goal, start_soc, min_soc, heuristic="energy")
 
+    def _plan_astar_potential(self, start, goal, start_soc, min_soc):
+        return self._run(start, goal, start_soc, min_soc, heuristic="potential")
+
     def _plan_wastar(self, start, goal, start_soc, min_soc, weight=2.0):
-        return self._run(start, goal, start_soc, min_soc, heuristic="energy", weight=weight)
+        return self._run(start, goal, start_soc, min_soc, heuristic="potential", weight=weight)
 
     def _plan_ara(self, start, goal, start_soc, min_soc, eps=3.0, decrease=0.5):
         return self._run(
-            start, goal, start_soc, min_soc, heuristic="energy", anytime={"eps": eps, "decrease": decrease}
+            start, goal, start_soc, min_soc, heuristic="potential", anytime={"eps": eps, "decrease": decrease}
         )
 
     # ---------- confronti ----------

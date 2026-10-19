@@ -8,9 +8,11 @@ e poi tutti gli algoritmi girano a cache calda, così il confronto è equo.
 
 import argparse
 import random
+import time
 
 from evopt.planner import ALGORITHMS, Planner
 from evopt.router import NoRouteError
+from evopt.search import alt_landmarks, ara_star, astar, dijkstra
 from evopt.vehicle import VEHICLES, Vehicle
 from tests.graphs import grid
 
@@ -40,15 +42,15 @@ def run(G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fa
     print(
         f"Station-leg table, built once: {cold.stats['prep_ms']:.0f} ms ({planner.leg_searches} road searches)\n"
     )
-    print("| algorithm | trip (min) | vs best | stops | states expanded | search ms |")
-    print("|---|---|---|---|---|---|")
+    print("| algorithm | trip (min) | vs best | stops | states expanded | prep ms | search ms |")
+    print("|---|---|---|---|---|---|---|")
     for alg, r in results.items():
         if r is None:
-            print(f"| {alg} | no route | | | | |")
+            print(f"| {alg} | no route | | | | | |")
         else:
             gap = f"+{100 * (r.time_s / best - 1):.1f}%" if r.time_s > best * 1.0005 else "best"
             print(
-                f"| {alg} | {r.time_s / 60:.2f} | {gap} | {len(r.charges)} | {r.stats.get('expanded', 0)} | {r.stats['search_ms']:.1f} |"
+                f"| {alg} | {r.time_s / 60:.2f} | {gap} | {len(r.charges)} | {r.stats.get('expanded', 0)} | {r.stats.get('prep_ms', 0):.0f} | {r.stats['search_ms']:.1f} |"
             )
     ara = results.get("ara")
     if ara and ara.history:
@@ -58,10 +60,88 @@ def run(G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fa
         print(f"\nARA* anytime: {steps}")
 
 
+def road_level(G, a, b):
+    """Percorso più veloce tra due nodi sulla rete stradale: stati espansi dei diversi algoritmi."""
+    t = time.perf_counter()
+    landmarks = alt_landmarks(G, k=8)
+    print(f"ALT preprocessing, built once: {(time.perf_counter() - t) * 1000:.0f} ms (8 landmarks)\n")
+    print("| algorithm | trip (min) | states expanded | ms |")
+    print("|---|---|---|---|")
+    runs = [
+        ("Dijkstra", lambda: dijkstra(G, a, b)),
+        ("A* straight line", lambda: astar(G, a, b)),
+        ("A* + ALT", lambda: astar(G, a, b, landmarks=landmarks)),
+        ("Weighted A* (w=2)", lambda: astar(G, a, b, weight=2.0)),
+    ]
+    for name, fn in runs:
+        t = time.perf_counter()
+        r = fn()
+        print(f"| {name} | {r.time_s / 60:.2f} | {r.expanded} | {(time.perf_counter() - t) * 1000:.0f} |")
+    t = time.perf_counter()
+    steps = list(ara_star(G, a, b, eps=3.0, decrease=1.0))
+    ms = (time.perf_counter() - t) * 1000
+    first = steps[0]
+    print(f"| ARA* first answer (w=3) | {first.time_s / 60:.2f} | {first.expanded} | |")
+    print(f"| ARA* final (w=1) | {steps[-1].time_s / 60:.2f} | {steps[-1].expanded} | {ms:.0f} |")
+
+
+def local(name, origin, target, vehicle, temp_c, start_soc, min_soc, legs):
+    import osmnx as ox
+
+    from evopt.graph import nearest_node
+    from evopt.stations import apply_stations, load_stations
+
+    G = ox.load_graphml(f"data/{name}.graphml")
+    stations = load_stations(f"data/{name}-stations.json")
+    apply_stations(G, stations)
+    chargers = sum("charger_kw" in d for _, d in G.nodes(data=True))
+    a, b = nearest_node(G, *origin), nearest_node(G, *target)
+    print(f"\n### {name}: {len(G)} nodes, {G.number_of_edges()} edges, {chargers} charger nodes\n")
+    print("Road-level search between the two endpoints\n")
+    road_level(G, a, b)
+    print(f"\nElectric trip: {vehicle}, {temp_c} C, charge {start_soc:.0%} to {min_soc:.0%}, legs={legs}\n")
+    run(
+        G,
+        a,
+        b,
+        VEHICLES[vehicle],
+        temp_c=temp_c,
+        start_soc=start_soc,
+        min_soc=min_soc,
+        legs=legs,
+        skip=("exact",),
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", help="a city already in cache (graph and stations)")
+    ap.add_argument("--local", help="name of an extract made by benchmarks.extract (data/<name>.graphml)")
+    ap.add_argument("--from", dest="origin", default="45.4642,9.1900", help="lat,lon (default: Milano Duomo)")
+    ap.add_argument(
+        "--to", dest="target", default="45.0620,7.6780", help="lat,lon (default: Torino Porta Nuova)"
+    )
+    ap.add_argument("--vehicle", default="Renault Twingo Electric")
+    ap.add_argument("--temp", type=float, default=0.0)
+    ap.add_argument("--start-soc", type=float, default=0.9)
+    ap.add_argument("--min-soc", type=float, default=0.1)
+    ap.add_argument("--legs", default="fastest", choices=("fastest", "pareto"))
+    ap.add_argument("--synthetic", action="store_true", help="also run the synthetic grids")
     args = ap.parse_args()
+    if args.local:
+        pt = lambda v: tuple(float(x) for x in v.split(","))
+        local(
+            args.local,
+            pt(args.origin),
+            pt(args.target),
+            args.vehicle,
+            args.temp,
+            args.start_soc,
+            args.min_soc,
+            args.legs,
+        )
+        if not args.synthetic:
+            return
     for n, k in ((20, 20), (40, 40), (60, 80)):
         G, a, b = synthetic(n, k)
         print(f"\n### Grid {n}x{n}: {len(G)} nodes, {k} stations\n")

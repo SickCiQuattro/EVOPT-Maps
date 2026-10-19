@@ -29,7 +29,9 @@ def plan(G, algorithm, vehicle=SMALL, **kw):
 def test_every_algorithm_returns_a_feasible_route(city, algorithm):
     r = plan(city, algorithm)
     assert r.path[0] == 0 and r.path[-1] == len(city) - 1
-    assert r.arrival_soc >= 0.1 - 1e-9 and r.charges and r.time_s > 0
+    assert r.arrival_soc >= 0.1 - 1e-9 and r.time_s > 0
+    if algorithm != "wastar":  # entro il suo limite 2x può preferire un percorso lento senza soste
+        assert r.charges
     assert r.stats["algorithm"] == algorithm
 
 
@@ -43,6 +45,18 @@ def test_energy_aware_heuristic_keeps_the_optimum_and_prunes_more(city):
     t, e = plan(city, "astar"), plan(city, "astar_energy")
     assert e.time_s == pytest.approx(t.time_s)
     assert e.stats["expanded"] < t.stats["expanded"]
+
+
+def test_exact_goal_potentials_keep_the_optimum_and_prune_hard(city):
+    e, p = plan(city, "astar_energy"), plan(city, "astar_potential")
+    assert p.time_s == pytest.approx(e.time_s)
+    assert p.stats["expanded"] < e.stats["expanded"]
+
+
+def test_dominance_pruning_never_changes_the_answer(city):
+    on = Planner(city, SMALL, 20).plan(0, 143, 1.0, 0.1, algorithm="dijkstra")
+    off = Planner(city, SMALL, 20, dominance=False).plan(0, 143, 1.0, 0.1, algorithm="dijkstra")
+    assert on.time_s == pytest.approx(off.time_s) and on.stats["expanded"] < off.stats["expanded"]
 
 
 def test_weighted_astar_stays_within_its_bound(city):
