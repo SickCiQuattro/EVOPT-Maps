@@ -18,35 +18,38 @@ The search algorithm was chosen for several reasons. Firstly, it allows for the 
 
 Il vecchio codice (A* + GUI tkinter) è nel branch `legacy`. `main` è in riscrittura: nucleo di routing in `evopt/`, interfaccia web in arrivo.
 
-## Setup
+## Avvio
 
 ```bash
 uv sync
-uv run pytest
+echo 'OCM_API_KEY=la_tua_chiave' > .env   # facoltativa: completa la potenza delle stazioni (openchargemap.org)
+uv run --env-file .env uvicorn evopt.api:app
 ```
 
-## Uso (libreria)
+Apri http://127.0.0.1:8000. Il primo piano per una nuova città scarica le strade da OpenStreetMap e può richiedere alcuni minuti; poi grafo e stazioni restano in `cache/` (30 e 7 giorni).
+
+![Interfaccia web](example/web.png)
+
+Test e lint: `uv run pytest` e `uv run ruff check .`.
+
+## Uso come libreria
 
 ```python
-from evopt.graph import load_graph, nearest_node
+from evopt.data import load_network
+from evopt.graph import nearest_node
 from evopt.router import plan_route
-from evopt.stations import apply_stations, fetch_osm
 from evopt.vehicle import VEHICLES
 
-G = load_graph("Pieve Emanuele, Italy")
-apply_stations(G, fetch_osm("Pieve Emanuele, Italy"))  # marca i nodi con 'charger_kw'
-route = plan_route(G, start, goal, VEHICLES["Fiat 500e"], temp_c=5, min_soc=0.1)
+G = load_network("Pieve Emanuele, Italy")  # strade + stazioni (OSM, più Open Charge Map se c'è la chiave)
+start, goal = nearest_node(G, 45.35, 9.17), nearest_node(G, 45.33, 9.15)
+route = plan_route(G, start, goal, VEHICLES["Renault Twizy"], temp_c=-10, start_soc=0.15, min_soc=0.1)
 ```
 
-Le stazioni vengono da OpenStreetMap. Per completare la potenza mancante c'è Open Charge Map
-(`fetch_ocm` + `merge`): serve una chiave gratuita da openchargemap.org in `OCM_API_KEY`.
+## Come funziona
 
-## UI examples
-
-Here are some previews of the user interface:
-
-![GUI preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/gui_example.png)
-![MAPS preview](https://github.com/PasticciniTeams/EVOPT-Maps/blob/main/example/maps_example.png)
+- **Energia:** resistenza al rotolamento e aerodinamica per ogni tratto, più servizi di bordo e climatizzazione in funzione della temperatura.
+- **Percorso:** Dijkstra sul tempo su un grafo ridotto di partenza, arrivo e stazioni, con la carica discretizzata all'1%.
+- **Limiti:** niente traffico, quota o disponibilità in tempo reale; ricarica a potenza costante; 22 kW dove la potenza della stazione è ignota.
 
 ## Contributors
 

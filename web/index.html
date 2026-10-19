@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EVOPT Maps</title>
+  <meta name="description" content="Plan the fastest route for an electric car, with charging stops only where the battery needs them.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='%23fff' stroke='%23111' stroke-width='6'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23e30613'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/leaflet.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <a class="skip" href="#plan-form">Skip to the planner</a>
+
+  <header class="top">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>EVOPT Maps</h1>
+    <nav aria-label="Sections">
+      <a href="#plan" data-view="plan">Plan</a>
+      <a href="#vehicles" data-view="vehicles">Vehicles</a>
+      <a href="#about" data-view="about">About the model</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- PLAN -->
+    <section id="view-plan" class="view plan" aria-labelledby="plan-title">
+      <div class="rail">
+        <section id="status" class="panel status" aria-live="polite" hidden>
+          <h2 tabindex="-1">Planning your trip</h2>
+          <ol id="steps" class="steps"></ol>
+          <p id="status-note" class="help"></p>
+          <p class="status-foot"><span id="elapsed" class="num">0:00</span><button type="button" id="cancel" class="text">Cancel</button></p>
+        </section>
+
+        <section id="error" class="panel failure" role="alert" hidden>
+          <h2 id="error-title" tabindex="-1"></h2>
+          <p id="error-text"></p>
+          <button type="button" id="retry" class="secondary" hidden>Try again</button>
+        </section>
+
+        <details id="settings" class="panel settings" open>
+          <summary>
+            <h2 id="plan-title" tabindex="-1">Plan a trip</h2>
+            <span id="settings-summary" class="settings-summary"></span>
+          </summary>
+          <form id="plan-form" novalidate>
+            <div class="field">
+              <label for="area">City or area to download</label>
+              <input id="area" name="area" type="text" autocomplete="off" required aria-describedby="area-help area-err">
+              <p id="area-help" class="help">Both places must be inside it. A city works best.</p>
+              <p id="area-err" class="err" hidden></p>
+            </div>
+
+            <div class="pair">
+              <div>
+                <div class="field">
+                  <label for="start">From</label>
+                  <input id="start" name="start" type="text" autocomplete="off" required aria-describedby="start-err">
+                  <p id="start-err" class="err" hidden></p>
+                </div>
+                <div class="field">
+                  <label for="goal">To</label>
+                  <input id="goal" name="goal" type="text" autocomplete="off" required aria-describedby="goal-err">
+                  <p id="goal-err" class="err" hidden></p>
+                </div>
+              </div>
+              <button type="button" id="swap" class="swap" aria-label="Swap start and destination">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 14V3M1 6l3-3 3 3M12 2v11M9 10l3 3 3-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              </button>
+            </div>
+
+            <div class="field">
+              <label for="vehicle">Vehicle</label>
+              <select id="vehicle" name="vehicle" aria-describedby="vehicle-spec"></select>
+              <p id="vehicle-spec" class="help"></p>
+            </div>
+
+            <div class="field slider">
+              <div class="slider-head"><label for="temp">Outside temperature</label><output id="temp-out" for="temp"></output></div>
+              <input id="temp" name="temp" type="range" min="-10" max="40" step="1" value="20">
+            </div>
+            <div class="field slider">
+              <div class="slider-head"><label for="start-soc">Start charge</label><output id="start-soc-out" for="start-soc"></output></div>
+              <input id="start-soc" name="start-soc" type="range" min="10" max="100" step="5" value="90">
+            </div>
+            <div class="field slider">
+              <div class="slider-head"><label for="min-soc">Arrive with at least</label><output id="min-soc-out" for="min-soc"></output></div>
+              <input id="min-soc" name="min-soc" type="range" min="5" max="50" step="5" value="10">
+            </div>
+
+            <button type="submit" id="submit" class="primary">Plan route</button>
+          </form>
+        </details>
+
+        <section id="result" class="panel result" aria-labelledby="result-title" hidden>
+          <h2 id="result-title" tabindex="-1">Trip</h2>
+          <p class="total"><span id="total" class="num"></span><span class="unit">total</span></p>
+          <dl class="stats">
+            <div><dt>Driving</dt><dd id="s-drive" class="num"></dd></div>
+            <div><dt>Charging</dt><dd id="s-charge" class="num"></dd></div>
+            <div><dt>Distance</dt><dd id="s-dist" class="num"></dd></div>
+            <div><dt>Arrive with</dt><dd id="s-arrive" class="num"></dd></div>
+          </dl>
+          <ol id="line" class="line" aria-label="Trip stops"></ol>
+          <p class="caveat">An estimate, not a navigation. No traffic or hills; stations with no published power are assumed 22 kW. <a href="#about">How the model works</a></p>
+        </section>
+
+        <section id="empty" class="panel empty">
+          <h2>How to read the result</h2>
+          <p>Your route appears here as a line. Each ringed number is a charging stop, with the minutes and energy it needs and the battery before and after.</p>
+          <p>The first plan for a new area downloads its roads and takes a few minutes. After that it is instant.</p>
+        </section>
+      </div>
+
+      <div class="mapwrap">
+        <div id="map" aria-label="Map of the route"></div>
+        <label class="maptoggle"><input type="checkbox" id="show-stations" checked> <span>Charging stations <span id="station-count" class="num"></span></span></label>
+      </div>
+    </section>
+
+    <!-- VEHICLES -->
+    <section id="view-vehicles" class="view page" aria-labelledby="vehicles-title" hidden>
+      <div class="page-in">
+        <h2 id="vehicles-title" tabindex="-1">Vehicles</h2>
+        <p class="lede">Pick the car the plan is for. Battery size and charging speed decide how far you get and how long each stop takes.</p>
+        <ul id="roster" class="roster"></ul>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="view-about" class="view page" aria-labelledby="about-title" hidden>
+      <div class="page-in prose">
+        <h2 id="about-title" tabindex="-1">About the model</h2>
+        <p class="lede">EVOPT Maps is a course project revived as a working demo. It shows its reasoning, so here is exactly what it assumes.</p>
+
+        <h3>How a trip is planned</h3>
+        <p>The roads of the chosen area come from OpenStreetMap. The planner searches for the fastest trip while tracking the battery. It charges only at real stations, only when needed, and only as much as it pays off in time.</p>
+
+        <h3>How energy is estimated</h3>
+        <p>For every road segment: rolling resistance plus air drag at the segment speed, divided by drivetrain efficiency, plus the power of heating or cooling over the time spent on it.</p>
+        <p class="formula">energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + (0.5 kW + 0.1 kW per °C outside 18–24 °C) · time</p>
+        <p>Cold and heat therefore cost range. Vehicle figures are approximate values from public data sheets.</p>
+
+        <h3>Where data comes from</h3>
+        <ul>
+          <li>Roads and charging stations: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</li>
+          <li>Missing station power and extra stations: <a href="https://openchargemap.org">Open Charge Map</a>, when a key is configured.</li>
+          <li>Map tiles: © OpenStreetMap contributors, shown in grey.</li>
+        </ul>
+
+        <h3>What it does not know</h3>
+        <ul>
+          <li>Traffic, road works, hills and braking energy recovery.</li>
+          <li>Whether a charger is free or working right now.</li>
+          <li>Charging slows near full; the model charges at a constant power, so long stops are slightly optimistic.</li>
+          <li>Where OpenStreetMap lacks a station's power it assumes 22 kW.</li>
+        </ul>
+        <p>Source code: <a href="https://github.com/PasticciniTeams/EVOPT-Maps">PasticciniTeams/EVOPT-Maps</a>. Authors: Filippo Camossi and Daniele Cioli.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="vendor/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
