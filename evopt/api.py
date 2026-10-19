@@ -52,6 +52,7 @@ class PlanRequest(BaseModel):
     algorithm: str = "astar"
     legs: str = "fastest"  # "pareto": più lento ma non perde tratti efficienti
     compare: bool = False  # esegue anche tutti gli altri algoritmi e riporta il confronto
+    elevation: bool = True  # tiene conto di salite e discese (se la mappa ha le quote)
 
     @field_validator("area", "start", "goal")
     @classmethod
@@ -157,6 +158,14 @@ def job_status(job_id: str):
     }
 
 
+def _elevation_summary(G, path, enabled):
+    """Dislivello netto e punto più alto. Non il dislivello lordo: il rumore dei dati lo gonfierebbe."""
+    heights = [G.nodes[n].get("elevation") for n in path]
+    if not enabled or any(h is None for h in heights):
+        return {"net_climb_m": None, "highest_m": None}
+    return {"net_climb_m": heights[-1] - heights[0], "highest_m": max(heights)}
+
+
 def _run(job, req):
     try:
         job.result = _plan(job, req)
@@ -213,11 +222,13 @@ def _network(area, job):
 
 
 def _planner(G, req):
-    key = (req.area, req.vehicle, round(req.temp_c, 1), req.legs)
+    key = (req.area, req.vehicle, round(req.temp_c, 1), req.legs, req.elevation)
     if key not in PLANNERS:
         if len(PLANNERS) >= MAX_PLANNERS:
             del PLANNERS[next(iter(PLANNERS))]
-        planner = Planner(G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S)
+        planner = Planner(
+            G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S, elevation=req.elevation
+        )
         planner.load_table(_table_path(planner))  # tratti già calcolati in sessioni precedenti
         PLANNERS[key] = planner
     return PLANNERS[key]
@@ -335,6 +346,7 @@ def _plan(job, req):
             "charge_min": charge_min,
             "total_min": route.time_s / 60,
             "arrival_soc": route.arrival_soc,
+            **_elevation_summary(G, route.path, req.elevation),
         },
     }
 

@@ -92,3 +92,35 @@ def test_a_failed_download_is_an_oserror_and_leaves_the_graph_unchanged(tmp_path
     with pytest.raises(OSError):
         add_node_elevations(G, tmp_path, fetch=down)
     assert not any("elevation" in d for _, d in G.nodes(data=True))
+
+
+def chain(elevations):
+    G = nx.MultiDiGraph()
+    for i, e in enumerate(elevations):
+        G.add_node(i, x=9.0, y=45.0, elevation=float(e))
+        if i:
+            G.add_edge(i - 1, i)
+            G.add_edge(i, i - 1)
+    return G
+
+
+def test_smoothing_removes_noise_but_keeps_a_real_slope():
+    from evopt.elevation import smooth
+
+    ramp = chain([0, 10, 20, 30, 40, 50, 60])
+    smooth(ramp, passes=3)
+    assert [ramp.nodes[i]["elevation"] for i in range(7)] == pytest.approx([0, 10, 20, 30, 40, 50, 60])
+
+    noisy = chain([100, 108, 100, 108, 100, 108, 100])  # un viadotto letto come buche del DEM
+    smooth(noisy, passes=3)
+    inner = [noisy.nodes[i]["elevation"] for i in range(1, 6)]
+    assert max(inner) - min(inner) < 8  # l'ampiezza del rumore è calata
+
+
+def test_smoothing_leaves_endpoints_and_isolated_nodes_alone():
+    from evopt.elevation import smooth
+
+    G = chain([5, 50, 10])
+    G.add_node(9, x=9.0, y=45.0, elevation=777.0)
+    smooth(G, passes=2)
+    assert G.nodes[0]["elevation"] == 5 and G.nodes[2]["elevation"] == 10 and G.nodes[9]["elevation"] == 777

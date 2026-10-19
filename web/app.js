@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = "evopt:v1";
-const EXAMPLE = { area: "Pieve Emanuele, Italy", start: "Pieve Emanuele", goal: "Siziano", vehicle: "", temp: -10, startSoc: 15, minSoc: 10, algorithm: "astar", legs: "fastest", compare: true };
+const EXAMPLE = { area: "Pieve Emanuele, Italy", start: "Pieve Emanuele", goal: "Siziano", vehicle: "", temp: -10, startSoc: 15, minSoc: 10, algorithm: "astar", legs: "fastest", compare: true, elevation: true };
 const STEPS = [
   { label: "Locating your places", stages: ["locating"] },
   { label: "Road network", stages: ["roads"] },
@@ -68,7 +68,7 @@ function values() {
   return {
     area: $("area").value.trim(), start: $("start").value.trim(), goal: $("goal").value.trim(), vehicle: $("vehicle").value,
     temp: +$("temp").value, startSoc: +$("start-soc").value, minSoc: +$("min-soc").value,
-    algorithm: $("algorithm").value, legs: $("legs").value, compare: $("compare").checked,
+    algorithm: $("algorithm").value, legs: $("legs").value, compare: $("compare").checked, elevation: $("elevation").checked,
   };
 }
 function persist() { save(values()); paintSummary(); }
@@ -83,6 +83,7 @@ function fill(v) {
   if (state.algorithms.some((a) => a.id === v.algorithm)) $("algorithm").value = v.algorithm;
   if (["fastest", "pareto"].includes(v.legs)) $("legs").value = v.legs;
   $("compare").checked = !!v.compare;
+  $("elevation").checked = v.elevation !== false;
   sliders.forEach(paintSlider); paintSpec(); paintSummary(); paintAlgorithmHelp();
 }
 function paintAlgorithmHelp() {
@@ -150,7 +151,7 @@ async function plan(e) {
   try {
     const r = await fetch("/api/plan", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ area: v.area, start: v.start, goal: v.goal, vehicle: v.vehicle, temp_c: v.temp, start_soc: v.startSoc / 100, min_soc: v.minSoc / 100, algorithm: v.algorithm, legs: v.legs, compare: v.compare }),
+      body: JSON.stringify({ area: v.area, start: v.start, goal: v.goal, vehicle: v.vehicle, temp_c: v.temp, start_soc: v.startSoc / 100, min_soc: v.minSoc / 100, algorithm: v.algorithm, legs: v.legs, compare: v.compare, elevation: v.elevation }),
     });
     if (!r.ok) return fail(id, { code: "internal", message: "Some of the values are not valid. Check the form and try again." });
     await poll(id, (await r.json()).job_id);
@@ -228,6 +229,13 @@ function done(id, res) {
   $("s-charge").textContent = res.stops.length ? dur(s.charge_min) : "none";
   $("s-dist").textContent = `${Math.round(s.distance_km)} km`;
   $("s-arrive").textContent = pct(s.arrival_soc);
+  const hasElevation = s.net_climb_m != null;
+  $("s-climb-box").hidden = $("s-high-box").hidden = !hasElevation;
+  if (hasElevation) {
+    const climb = Math.round(s.net_climb_m);
+    $("s-climb").textContent = `${climb > 0 ? "+" : climb < 0 ? "\u2212" : ""}${Math.abs(climb).toLocaleString("en")}\u00a0m`;
+    $("s-high").textContent = `${Math.round(s.highest_m).toLocaleString("en")}\u00a0m`;
+  }
   $("line").replaceChildren(...diagram(res, v));
   state.result = res;
   const algo = state.algorithms.find((a) => a.id === res.algorithm)?.name ?? res.algorithm;
@@ -376,7 +384,7 @@ async function init() {
   sliders.forEach((s) => $(s.id).addEventListener("input", onSlider));
   for (const id of ["area", "start", "goal"]) $(id).addEventListener("input", () => { persist(); $(id).removeAttribute("aria-invalid"); $(`${id}-err`).hidden = true; });
   $("vehicle").addEventListener("change", () => { paintSpec(); persist(); });
-  for (const id of ["algorithm", "legs", "compare"]) $(id).addEventListener("change", () => { paintAlgorithmHelp(); persist(); });
+  for (const id of ["algorithm", "legs", "compare", "elevation"]) $(id).addEventListener("change", () => { paintAlgorithmHelp(); persist(); });
   $("swap").addEventListener("click", () => { const a = $("start").value; $("start").value = $("goal").value; $("goal").value = a; persist(); });
   $("plan-form").addEventListener("submit", plan);
   $("cancel").addEventListener("click", cancel);

@@ -222,3 +222,26 @@ def test_station_legs_survive_a_restart(client):
 def test_without_compare_there_is_no_comparison_state(client):
     job = run(client)
     assert job["compare"] is None and job["comparison"] is None
+
+
+def test_summary_reports_net_climb_and_highest_point_when_the_map_has_elevation(client, monkeypatch):
+    def hilly(place, progress=None):
+        G = line(12, stations=[6])
+        for n in G.nodes:
+            G.nodes[n]["elevation"] = 10.0 * n  # sale di 10 m a nodo: 0 m alla partenza, 110 m all'arrivo
+        return G
+
+    monkeypatch.setattr(api, "load_network", hilly)
+    s = run(client)["result"]["summary"]
+    assert s["net_climb_m"] == pytest.approx(110.0) and s["highest_m"] == pytest.approx(110.0)
+
+
+def test_summary_has_no_elevation_figures_on_a_flat_map(client):
+    s = run(client)["result"]["summary"]
+    assert s["net_climb_m"] is None and s["highest_m"] is None
+
+
+def test_elevation_can_be_switched_off_per_request(client):
+    run(client)
+    run(client, elevation=False)
+    assert len(api.PLANNERS) == 2  # un Planner con le quote e uno senza: tabelle dei tratti diverse
