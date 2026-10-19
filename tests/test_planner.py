@@ -254,3 +254,18 @@ def test_unreasonable_dem_glitches_are_limited_to_a_plausible_grade():
 def test_the_saved_table_knows_about_elevation(tmp_path):
     a, b = Planner(hill(400), CAR, 20), Planner(hill(400), CAR, 20, elevation=False)
     assert a.fingerprint() != b.fingerprint() != Planner(hill(0), CAR, 20).fingerprint()
+
+
+def test_naive_driver_skips_a_much_slower_charger_when_a_decent_one_is_reachable():
+    G = line(9, stations=[])  # 80 km: serve una sosta
+    G.nodes[5]["charger_kw"] = 3.7  # più vicina alla meta ma lentissima
+    G.nodes[4]["charger_kw"] = 50  # un po' più indietro, veloce
+    r = Planner(G, CAR, 20).plan(0, 8, 1.0, 0.1, algorithm="greedy")
+    assert [c[0] for c in r.charges] == [4]
+
+
+def test_naive_driver_still_uses_a_slow_charger_if_it_is_the_only_one():
+    G = line(9, stations=[])
+    G.nodes[5]["charger_kw"] = 3.7
+    r = Planner(G, CAR, 20).plan(0, 8, 1.0, 0.1, algorithm="greedy")
+    assert [c[0] for c in r.charges] == [5]
