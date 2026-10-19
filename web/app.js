@@ -139,6 +139,7 @@ async function plan(e) {
   persist();
   const id = ++state.job;
   clearRoute();
+  showCompare("none");
   setBusy(true);
   show("status");
   renderSteps("locating");
@@ -163,7 +164,35 @@ async function poll(id, jobId) {
     if (id !== state.job) return; // cancelled or replaced
     const job = await (await fetch(`/api/jobs/${jobId}`)).json();
     if (job.status === "running") { renderSteps(job.stage); continue; }
-    return job.status === "done" ? done(id, job.result) : fail(id, job.error);
+    if (job.status !== "done") return fail(id, job.error);
+    done(id, job.result);
+    if (job.compare) await pollCompare(id, jobId, job);
+    return;
+  }
+}
+async function pollCompare(id, jobId, job) {
+  for (;;) {
+    if (id !== state.job) return; // si è passati a un altro piano
+    if (job.compare === "running") {
+      const [done, total] = job.compare_progress;
+      showCompare("pending", `${done} of ${total || state.algorithms.length} algorithms done.`);
+    } else if (job.compare === "done") {
+      return showCompare("table", job.comparison);
+    } else {
+      return showCompare("error");
+    }
+    await new Promise((res) => setTimeout(res, 1000));
+    job = await (await fetch(`/api/jobs/${jobId}`)).json();
+  }
+}
+function showCompare(mode, payload) {
+  $("compare-pending").hidden = mode !== "pending";
+  $("compare-result").hidden = mode !== "table";
+  if (mode === "pending") $("compare-progress").textContent = payload;
+  if (mode === "table") renderAlgorithms(state.result, payload);
+  if (mode === "error") {
+    $("compare-pending").hidden = false;
+    $("compare-progress").textContent = "The comparison could not be completed.";
   }
 }
 function finish(id) {
@@ -202,9 +231,9 @@ function done(id, res) {
   $("line").replaceChildren(...diagram(res, v));
   state.result = res;
   const algo = state.algorithms.find((a) => a.id === res.algorithm)?.name ?? res.algorithm;
-  $("solved-by").textContent = `Solved with ${algo}: ${res.stats.expanded?.toLocaleString("en") ?? "?"} states, ${Math.max(1, Math.round(res.stats.search_ms ?? 0))}\u00a0ms.`;
-  $("compare-link").hidden = !res.comparison;
-  renderAlgorithms(res);
+  $("solved-by").textContent = `Solved with ${algo}: ${res.stats.expanded?.toLocaleString("en") ?? "?"} states, ${Math.max(1, Math.round(res.stats.search_ms ?? 0)).toLocaleString("en")}\u00a0ms.`;
+  $("compare-link").hidden = !values().compare;
+  showCompare(values().compare ? "pending" : "none", values().compare ? "Starting\u2026" : "");
   drawMap(res);
   show("result");
   $("result-title").focus({ preventScroll: true });
@@ -280,15 +309,11 @@ function insights(rows) {
   if (w?.expanded && d?.expanded && w.expanded < d.expanded) out.push(`Weighted A* expands ${num(d.expanded / w.expanded, 1)}\u00d7 fewer states than Dijkstra and lands ${num(w.gap_pct, 1)}\u00a0% above the best trip.`);
   if (r?.anytime?.length > 1 && r.anytime[0].expanded < 0.9 * r.anytime.at(-1).expanded) {
     const first = r.anytime[0], last = r.anytime.at(-1);
-    out.push(`ARA* had a first answer after ${num(first.expanded)} states, ${num(first.expanded / last.expanded * 100)}\u00a0% of the effort of its final proven-optimal one.`);
+    out.push(`ARA* had a first answer after ${num(first.expanded)} states, ${num(first.expanded / last.expanded * 100, first.expanded / last.expanded < 0.01 ? 1 : 0)}\u00a0% of the effort of its final proven-optimal one.`);
   }
   return out;
 }
-function renderAlgorithms(res) {
-  const rows = res.comparison;
-  $("compare-result").hidden = !rows;
-  $("compare-empty").hidden = !!rows;
-  if (!rows) return;
+function renderAlgorithms(res, rows) {
   const info = Object.fromEntries(state.algorithms.map((a) => [a.id, a]));
   $("insights").replaceChildren(...insights(rows).map((t) => h("li", {}, t)));
   $("compare-rows").replaceChildren(...rows.map((r) => {
