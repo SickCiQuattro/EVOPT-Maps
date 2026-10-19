@@ -310,10 +310,10 @@ const num = (v, d = 0) => v.toLocaleString("en", { minimumFractionDigits: d, max
 function insights(rows) {
   const by = (id) => rows.find((r) => r.algorithm === id);
   const out = [];
-  const [d, a, w, r, g] = ["dijkstra", "astar_energy", "wastar", "ara", "greedy"].map(by);
+  const [d, a, w, r, g] = ["dijkstra", "astar_potential", "wastar", "ara", "greedy"].map(by);
   if (g?.time_min != null && g.gap_pct > 0.05) out.push(`The naive driver needs ${num(g.gap_pct, 1)}\u00a0% more time than the best plan.`);
   else if (g && g.time_min == null) out.push("The naive driver could not complete this trip.");
-  if (d?.expanded && a?.expanded && a.expanded < d.expanded) out.push(`A* expands ${num((1 - a.expanded / d.expanded) * 100)}\u00a0% fewer states than Dijkstra and finds the same trip.`);
+  if (d?.expanded && a?.expanded && a.expanded < d.expanded) out.push(`A* with exact potentials expands ${num((1 - a.expanded / d.expanded) * 100)}\u00a0% fewer states than Dijkstra and finds the same trip.`);
   if (w?.expanded && d?.expanded && w.expanded < d.expanded) out.push(`Weighted A* expands ${num(d.expanded / w.expanded, 1)}\u00d7 fewer states than Dijkstra and lands ${num(w.gap_pct, 1)}\u00a0% above the best trip.`);
   if (r?.anytime?.length > 1 && r.anytime[0].expanded < 0.9 * r.anytime.at(-1).expanded) {
     const first = r.anytime[0], last = r.anytime.at(-1);
