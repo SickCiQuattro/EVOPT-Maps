@@ -93,6 +93,10 @@ class Job:
     result: dict | None = None
     error: dict | None = None
     started: float = 0.0
+    compare: str | None = None  # None | running | done | error: il confronto parte dopo il percorso
+    compare_progress: tuple = (0, 0)
+    comparison: list | None = None
+    context: tuple | None = None  # (planner, partenza, arrivo) per il confronto
 
 
 class JobError(Exception):
@@ -147,13 +151,20 @@ def job_status(job_id: str):
         "elapsed_s": round(time.time() - job.started, 1),
         "result": job.result,
         "error": job.error,
+        "compare": job.compare,
+        "compare_progress": list(job.compare_progress),
+        "comparison": job.comparison,
     }
 
 
 def _run(job, req):
     try:
         job.result = _plan(job, req)
+        if req.compare:
+            job.compare = "running"  # prima di "done": il client non deve vedere un confronto che non partirà
         job.status = "done"
+        if req.compare and job.context:
+            _run_compare(job, req)
     except JobError as e:
         job.status, job.error = "error", {"code": e.code, "message": e.message}
     except (OSError, ResponseStatusCodeError):  # rete assente o Overpass saturo/irraggiungibile
@@ -216,30 +227,47 @@ def _table_path(planner):
     return CACHE_DIR / f"legs-{planner.fingerprint()}.pkl"
 
 
-def _compare(planner, start, goal, req):
-    rows = []
-    for alg in ALGORITHMS:
-        row = {"algorithm": alg, "time_min": None, "note": None}
-        if alg == "exact" and len(planner.G) > EXACT_MAX_NODES:
-            row["note"] = "Skipped: graph too large for the exact reference."
-        else:
-            try:
-                r = planner.plan(start, goal, req.start_soc, req.min_soc, algorithm=alg)
-                row |= {
-                    "time_min": r.time_s / 60,
-                    "stops": len(r.charges),
-                    "expanded": r.stats.get("expanded", 0),
-                    "search_ms": r.stats.get("search_ms", 0.0),
-                    "bound": r.stats.get("bound", 1.0),
-                    "anytime": r.history or None,
-                }
-            except NoRouteError:
-                row["note"] = "Found no feasible route."
-        rows.append(row)
-    best = min((r["time_min"] for r in rows if r["time_min"] is not None), default=None)
-    for r in rows:
-        r["gap_pct"] = None if r["time_min"] is None else (r["time_min"] / best - 1) * 100
-    return rows
+def _run_compare(job, req):
+    """Confronto con gli altri algoritmi, dopo che il percorso è già stato consegnato. Un lock per algoritmo."""
+    planner, start, goal = job.context
+    job.compare, job.compare_progress, rows = "running", (0, len(ALGORITHMS)), []
+    try:
+        for i, alg in enumerate(ALGORITHMS, 1):
+            row = {"algorithm": alg, "time_min": None, "note": None}
+            if alg == "exact" and len(planner.G) > EXACT_MAX_NODES:
+                row["note"] = "Skipped: graph too large for the exact reference."
+            else:
+                try:
+                    with _plan_lock:
+                        r = planner.plan(start, goal, req.start_soc, req.min_soc, algorithm=alg)
+                        _save_table(planner)
+                    row |= {
+                        "time_min": r.time_s / 60,
+                        "stops": len(r.charges),
+                        "expanded": r.stats.get("expanded", 0),
+                        "search_ms": r.stats.get("search_ms", 0.0),
+                        "bound": r.stats.get("bound", 1.0),
+                        "anytime": r.history or None,
+                    }
+                except NoRouteError:
+                    row["note"] = "Found no feasible route."
+            rows.append(row)
+            job.compare_progress = (i, len(ALGORITHMS))
+        best = min((r["time_min"] for r in rows if r["time_min"] is not None), default=None)
+        for r in rows:
+            r["gap_pct"] = None if r["time_min"] is None else (r["time_min"] / best - 1) * 100
+        job.comparison, job.compare = rows, "done"
+    except Exception:
+        log.exception("comparison failed")
+        job.compare = "error"
+    finally:
+        job.context = None  # libera il Planner
+
+
+def _save_table(planner):
+    if planner.table_dirty:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        planner.save_table(_table_path(planner))
 
 
 def _plan(job, req):
@@ -269,10 +297,8 @@ def _plan(job, req):
         with _plan_lock:
             planner = _planner(G, req)
             route = planner.plan(start, goal, req.start_soc, req.min_soc, algorithm=req.algorithm)
-            comparison = _compare(planner, start, goal, req) if req.compare else None
-            if planner.table_dirty:
-                CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                planner.save_table(_table_path(planner))
+            _save_table(planner)
+            job.context = (planner, start, goal)
     except NoRouteError as e:
         raise JobError(
             "no_route",
@@ -303,7 +329,6 @@ def _plan(job, req):
         "algorithm": req.algorithm,
         "stats": route.stats,
         "anytime": route.history or None,
-        "comparison": comparison,
         "summary": {
             "distance_km": route.distance_m / 1000,
             "drive_min": route.time_s / 60 - charge_min,

@@ -51,12 +51,24 @@ def body(**kw):
     } | kw
 
 
+def run_compare(client, **kw):
+    """Piano con confronto: il percorso arriva per primo, il confronto subito dopo."""
+    job = run(client, compare=True, **kw)
+    for _ in range(200):
+        if job["compare"] in ("done", "error"):
+            return job
+        time.sleep(0.05)
+        job = client.get(f"/api/jobs/{job['id']}").json()
+    raise AssertionError("comparison did not finish")
+
+
 def run(client, **kw):
     r = client.post("/api/plan", json=body(**kw))
     assert r.status_code == 202, r.text
     for _ in range(100):
         job = client.get(f"/api/jobs/{r.json()['job_id']}").json()
         if job["status"] != "running":
+            job["id"] = r.json()["job_id"]
             return job
         time.sleep(0.05)
     raise AssertionError("job did not finish")
@@ -160,7 +172,9 @@ def test_algorithms_are_described_for_the_interface(client):
 
 
 def test_compare_returns_one_row_per_algorithm_with_gaps_to_the_best(client):
-    rows = run(client, compare=True)["result"]["comparison"]
+    job = run_compare(client)
+    assert "comparison" not in job["result"] and job["compare_progress"] == [len(ALGORITHMS), len(ALGORITHMS)]
+    rows = job["comparison"]
     assert [r["algorithm"] for r in rows] == list(ALGORITHMS)
     gaps = [r["gap_pct"] for r in rows if r["time_min"] is not None]
     assert min(gaps) == pytest.approx(0, abs=0.01) and all(g >= -0.01 for g in gaps)
@@ -170,7 +184,7 @@ def test_compare_returns_one_row_per_algorithm_with_gaps_to_the_best(client):
 
 def test_compare_skips_the_exact_reference_on_large_graphs(client, monkeypatch):
     monkeypatch.setattr(api, "EXACT_MAX_NODES", 5)
-    rows = run(client, compare=True)["result"]["comparison"]
+    rows = run_compare(client)["comparison"]
     exact = next(r for r in rows if r["algorithm"] == "exact")
     assert exact["time_min"] is None and "too large" in exact["note"]
 
@@ -203,3 +217,8 @@ def test_station_legs_survive_a_restart(client):
     run(client)
     (planner,) = api.PLANNERS.values()
     assert planner.leg_searches == 2  # partenza e arrivo; i tratti tra stazioni vengono dal disco
+
+
+def test_without_compare_there_is_no_comparison_state(client):
+    job = run(client)
+    assert job["compare"] is None and job["comparison"] is None
