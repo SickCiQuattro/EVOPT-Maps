@@ -76,7 +76,7 @@ def run(client, **kw):
 
 def test_vehicles_are_listed_with_specs(client):
     assert client.get("/api/vehicles").json() == [
-        {"name": "Test car", "capacity_kwh": 10, "max_charge_kw": 50}
+        {"name": "Test car", "capacity_kwh": 10, "max_charge_kw": 50, "source": None}
     ]
 
 
