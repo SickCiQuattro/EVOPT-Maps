@@ -192,3 +192,26 @@ def test_saved_table_is_ignored_when_the_scenario_differs(city, tmp_path):
     (tmp_path / "bad.pkl").write_bytes(b"not a pickle")
     assert not Planner(city, SMALL, 20).load_table(tmp_path / "bad.pkl")
     assert not Planner(city, SMALL, 20).load_table(tmp_path / "missing.pkl")
+
+
+def test_charging_slows_down_above_the_knee_so_the_last_percent_costs_more():
+    G = line(12)
+    G.nodes[6]["charger_kw"] = 150
+    fast = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=150, taper_from=0.5, taper_to=0.2)
+    flat = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=150)
+    a = Planner(G, fast, 20).plan(0, 11, 1.0, 0.1, algorithm="astar_potential")
+    b = Planner(G, flat, 20).plan(0, 11, 1.0, 0.1, algorithm="astar_potential")
+    assert a.charges[0][1] >= b.charges[0][1] * 0.99  # stessa energia circa, da una carica più lenta
+    assert a.charges[0][2] > b.charges[0][2]
+
+
+@pytest.mark.parametrize("algorithm", ["dijkstra", "astar_potential", "exact", "greedy"])
+def test_tapered_charging_is_consistent_across_algorithms(algorithm):
+    G = line(12)
+    G.nodes[6]["charger_kw"] = 150
+    car = Vehicle(capacity_kwh=10, mass_kg=1500, cda=0.6, max_charge_kw=150, taper_from=0.5, taper_to=0.2)
+    ref = Planner(G, car, 20).plan(0, 11, 1.0, 0.1, algorithm="dijkstra")
+    r = Planner(G, car, 20).plan(0, 11, 1.0, 0.1, algorithm=algorithm)
+    assert (
+        r.time_s >= ref.time_s * 0.99
+    )  # nessun algoritmo può battere l'ottimo (tolleranza di discretizzazione)
