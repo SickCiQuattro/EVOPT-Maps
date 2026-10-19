@@ -20,7 +20,7 @@ import osmnx as ox
 from shapely.geometry import LineString
 
 from evopt.graph import haversine_m
-from evopt.stations import Station, power_kw, save_stations
+from evopt.stations import save_stations, station_from_tags
 
 DEFAULT_KPH = {
     "motorway": 130, "motorway_link": 60, "trunk": 90, "trunk_link": 50,
@@ -57,7 +57,7 @@ def read(pbf, bbox):
                 else (obj.nodes[0].location if obj.is_way() and obj.nodes else None)
             )
             if loc is not None and loc.valid() and inside(loc):
-                stations.append(Station(loc.lat, loc.lon, power_kw(tags)))
+                stations.append(station_from_tags(loc.lat, loc.lon, tags))
     return ways, stations
 
 

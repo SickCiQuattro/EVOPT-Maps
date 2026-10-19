@@ -22,7 +22,7 @@ ALGORITHM_INFO = {
     "astar": ("A*", "Optimal. Guided by the straight-line travel time to the destination."),
     "astar_energy": ("A*, energy-aware", "Optimal. Also counts the minimum charging time still needed to cover the distance."),
     "astar_potential": ("A*, exact potentials", "Optimal. Uses the true minimum drive time and energy to the goal, from a backward search."),
-    "wastar": ("Weighted A* (w=2)", "Fast, at most 2x the optimal trip. Inflates the heuristic."),
+    "wastar": ("Weighted A* (w=1.5)", "Faster, at most 1.5x the optimal trip. Inflates the heuristic."),
     "ara": ("ARA*", "Anytime: a quick answer first, then improved step by step until provably optimal."),
     "greedy": ("Naive driver", "Baseline: heads for the charger nearest the destination and charges to 80% every time."),
     "exact": ("Exact reference", "Label search on the full road network, no reduced graph. Slow: for checking the others."),
@@ -415,7 +415,7 @@ class Planner:
     def _plan_astar_potential(self, start, goal, start_soc, min_soc):
         return self._run(start, goal, start_soc, min_soc, heuristic="potential")
 
-    def _plan_wastar(self, start, goal, start_soc, min_soc, weight=2.0):
+    def _plan_wastar(self, start, goal, start_soc, min_soc, weight=1.5):
         return self._run(start, goal, start_soc, min_soc, heuristic="potential", weight=weight)
 
     def _plan_ara(self, start, goal, start_soc, min_soc, eps=3.0, decrease=0.5):

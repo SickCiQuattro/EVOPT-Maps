@@ -1,3 +1,4 @@
+import math
 import os
 import warnings
 from pathlib import Path
@@ -18,7 +19,7 @@ def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
     """Grafo di `place` con le stazioni (OSM, più OCM se c'è OCM_API_KEY) sui nodi 'charger_kw'."""
     progress = progress or (lambda stage: None)
     if place.startswith("local:"):
-        return _load_local(place[len("local:") :], progress, Path(data_dir))
+        return _load_local(place[len("local:") :], progress, Path(data_dir), Path(cache_dir))
     key = slug(place)
     progress("roads")
     G = cached(
@@ -63,8 +64,8 @@ def _circle(G):
     return lat, lon, float(haversine_m(lat, lon, ys, xs).max()) / 1000 + 1
 
 
-def _load_local(name, progress, data_dir):
-    """Estratto locale prodotto da `benchmarks.extract`: nessuna rete, nessuna scadenza."""
+def _load_local(name, progress, data_dir, cache_dir):
+    """Estratto locale prodotto da `benchmarks.extract`; con OCM_API_KEY si completa con Open Charge Map."""
     graph, stations = data_dir / f"{name}.graphml", data_dir / f"{name}-stations.json"
     if not graph.exists():
         raise FileNotFoundError(
@@ -73,6 +74,40 @@ def _load_local(name, progress, data_dir):
     progress("roads")
     G = ox.load_graphml(graph)
     progress("stations")
-    if stations.exists():
-        apply_stations(G, load_stations(stations))
+    found = load_stations(stations) if stations.exists() else []
+    if os.environ.get("OCM_API_KEY"):
+        progress("power")
+        try:
+            ocm = cached(
+                cache_dir / f"stations-ocm-local-{slug(name)}.json",
+                STATIONS_TTL_DAYS,
+                lambda: _ocm_tiles(G),
+                load_stations,
+                save_stations,
+            )
+            found = merge(found, ocm)
+        except OSError as e:
+            warnings.warn(f"Open Charge Map non disponibile ({e}): uso solo l'estratto", stacklevel=3)
+    apply_stations(G, found)
     return G
+
+
+def _ocm_tiles(G, step_km=25.0):
+    """Open Charge Map risponde per cerchio e con un tetto di risultati: un'area lunga si copre a tessere."""
+    ys = [d["y"] for _, d in G.nodes(data=True)]
+    xs = [d["x"] for _, d in G.nodes(data=True)]
+    dlat = step_km / 111.0
+    seen, out = set(), []
+    lat = min(ys)
+    while lat < max(ys) + dlat:
+        dlon = step_km / (111.0 * max(0.2, math.cos(math.radians(lat))))
+        lon = min(xs)
+        while lon < max(xs) + dlon:
+            for s in fetch_ocm(lat, lon, step_km * 0.75):
+                key = (round(s.lat, 5), round(s.lon, 5))
+                if key not in seen:
+                    seen.add(key)
+                    out.append(s)
+            lon += dlon
+        lat += dlat
+    return out

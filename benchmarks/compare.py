@@ -89,14 +89,10 @@ def road_level(G, a, b):
 
 
 def local(name, origin, target, vehicle, temp_c, start_soc, min_soc, legs):
-    import osmnx as ox
-
+    from evopt.data import load_network
     from evopt.graph import nearest_node
-    from evopt.stations import apply_stations, load_stations
 
-    G = ox.load_graphml(f"data/{name}.graphml")
-    stations = load_stations(f"data/{name}-stations.json")
-    apply_stations(G, stations)
+    G = load_network(f"local:{name}")  # con OCM_API_KEY completa le stazioni con Open Charge Map
     chargers = sum("charger_kw" in d for _, d in G.nodes(data=True))
     a, b = nearest_node(G, *origin), nearest_node(G, *target)
     print(f"\n### {name}: {len(G)} nodes, {G.number_of_edges()} edges, {chargers} charger nodes\n")

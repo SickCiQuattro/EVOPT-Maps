@@ -83,3 +83,48 @@ def test_local_extract_is_loaded_from_disk_without_any_network_call(sources, tmp
 def test_missing_local_extract_explains_how_to_make_it(sources, tmp_path):
     with pytest.raises(FileNotFoundError, match="benchmarks.extract"):
         data.load_network("local:nothing", data_dir=tmp_path)
+
+
+def local_corridor(tmp_path):
+    G = line(12)
+    G.graph["crs"] = "epsg:4326"
+    ox.save_graphml(G, tmp_path / "corridor.graphml")
+    save_stations([Station(45.0, 0.6, None, "Enel X")], tmp_path / "corridor-stations.json")
+
+
+def test_local_extract_is_completed_with_open_charge_map_tiles(sources, tmp_path, monkeypatch):
+    local_corridor(tmp_path)
+    monkeypatch.setenv("OCM_API_KEY", "k")
+    calls = []
+
+    def tile(lat, lon, radius_km):
+        calls.append((round(lat, 2), round(lon, 2), radius_km))
+        return [
+            Station(45.0, 0.6, 150.0),
+            Station(45.0, 0.2, 50.0),
+        ]  # la stessa stazione in ogni tessera: va deduplicata
+
+    monkeypatch.setattr(data, "fetch_ocm", tile)
+    G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
+    assert len(calls) > 1  # copre il corridoio a tessere, non con un solo cerchio
+    assert chargers(G) == {
+        2: 50.0,
+        6: 150.0,
+    }  # potenza dell'OCM dove l'estratto non l'aveva, stazione extra aggiunta
+    assert G.nodes[6]["charger_label"] == "Enel X"
+    before = len(calls)
+    data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
+    assert len(calls) == before  # seconda volta: le tessere vengono dalla cache
+
+
+def test_local_extract_survives_an_open_charge_map_outage(sources, tmp_path, monkeypatch):
+    local_corridor(tmp_path)
+    monkeypatch.setenv("OCM_API_KEY", "k")
+
+    def down(*a):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(data, "fetch_ocm", down)
+    with pytest.warns(UserWarning, match="Open Charge Map"):
+        G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
+    assert chargers(G) == {6: 22.0}  # solo l'estratto, con la potenza predefinita

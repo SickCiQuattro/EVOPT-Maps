@@ -286,6 +286,7 @@ def _plan(job, req):
             "kwh": kwh,
             "minutes": secs / 60,
             "power_kw": min(vehicle.max_charge_kw, G.nodes[n]["charger_kw"]),
+            "label": G.nodes[n].get("charger_label"),
             "average_kw": kwh / max((secs - PLUG_IN_S) / 3600, 1e-9) if secs > PLUG_IN_S else None,
             "soc_before": before,
             "soc_after": after,
