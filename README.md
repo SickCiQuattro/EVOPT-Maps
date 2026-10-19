@@ -30,11 +30,16 @@ uv run pytest
 ```python
 from evopt.graph import load_graph, nearest_node
 from evopt.router import plan_route
+from evopt.stations import apply_stations, fetch_osm
 from evopt.vehicle import VEHICLES
 
-G = load_graph("Pieve Emanuele, Italy")  # le stazioni sono nodi con attributo 'charger_kw'
+G = load_graph("Pieve Emanuele, Italy")
+apply_stations(G, fetch_osm("Pieve Emanuele, Italy"))  # marca i nodi con 'charger_kw'
 route = plan_route(G, start, goal, VEHICLES["Fiat 500e"], temp_c=5, min_soc=0.1)
 ```
+
+Le stazioni vengono da OpenStreetMap. Per completare la potenza mancante c'è Open Charge Map
+(`fetch_ocm` + `merge`): serve una chiave gratuita da openchargemap.org in `OCM_API_KEY`.
 
 ## UI examples
 
