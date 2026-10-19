@@ -15,6 +15,15 @@ from evopt.router import NoRouteError, Route
 from evopt.search import INF, _hav, ara, search, straight_speed, time_heuristic
 
 ALGORITHMS = ("dijkstra", "astar", "astar_energy", "wastar", "ara", "greedy", "exact")
+ALGORITHM_INFO = {
+    "dijkstra": ("Dijkstra", "Optimal. Uninformed: expands states in order of cost only."),
+    "astar": ("A*", "Optimal. Guided by the straight-line travel time to the destination."),
+    "astar_energy": ("A*, energy-aware", "Optimal. Also counts the minimum charging time still needed to cover the distance."),
+    "wastar": ("Weighted A* (w=2)", "Fast, at most 2x the optimal trip. Inflates the heuristic."),
+    "ara": ("ARA*", "Anytime: a quick answer first, then improved step by step until provably optimal."),
+    "greedy": ("Naive driver", "Baseline: heads for the charger nearest the destination and charges to 80% every time."),
+    "exact": ("Exact reference", "Label search on the full road network, no reduced graph. Slow: for checking the others."),
+}  # fmt: skip
 Leg = namedtuple("Leg", "time_s kwh meters path")
 GOAL = (-1, -1)  # stato terminale: raggiunto il goal con qualunque carica
 
@@ -256,13 +265,23 @@ class Planner:
         t0 = time.perf_counter()
         cap = self.vehicle.capacity_kwh
         soc, node, t, dist, visited = start_soc * cap, start, 0.0, 0.0, {start}
-        path, charges = [start], []
+        path, charges, arrived = [start], [], False
         while True:
             legs = {
                 b: min(ls, key=lambda leg: leg.time_s)
                 for b, ls in self._legs(node, self.stations | {goal}).items()
             }
-            reachable = {b: leg for b, leg in legs.items() if soc - leg.kwh >= min_soc * cap}
+            if arrived:  # sosta: all'80%, o quanto serve per arrivare se non basta
+                target = charge_to * cap
+                if goal in legs:
+                    target = max(target, min(cap, legs[goal].kwh + min_soc * cap))
+                added = max(0.0, target - soc)
+                if added > 0:
+                    kw = min(self.vehicle.max_charge_kw, self.G.nodes[node]["charger_kw"])
+                    secs = added / kw * 3600
+                    charges.append((node, added, secs, soc / cap, (soc + added) / cap))
+                    soc, t = soc + added, t + secs
+            reachable = {b: leg for b, leg in legs.items() if soc - leg.kwh >= min_soc * cap - 1e-9}
             if goal in reachable:
                 nxt = goal
             else:
@@ -279,12 +298,7 @@ class Planner:
             if node == goal:
                 break
             visited.add(node)
-            added = max(0.0, charge_to * cap - soc)
-            if added > 0:
-                kw = min(self.vehicle.max_charge_kw, self.G.nodes[node]["charger_kw"])
-                secs = added / kw * 3600
-                charges.append((node, added, secs, soc / cap, (soc + added) / cap))
-                soc, t = soc + added, t + secs
+            arrived = True
         route = Route(path, t, dist, charges, soc / cap)
         route.stats.update(expanded=len(visited), search_ms=(time.perf_counter() - t0) * 1000)
         return route

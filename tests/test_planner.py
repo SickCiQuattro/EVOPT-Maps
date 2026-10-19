@@ -74,6 +74,12 @@ def test_naive_driver_loses_time_charging_to_80_percent_everywhere():
     assert p.plan(0, 29, algorithm="greedy", **kw).time_s > p.plan(0, 29, algorithm="astar", **kw).time_s
 
 
+def test_naive_driver_charges_beyond_80_percent_when_that_is_not_enough_to_arrive():
+    G = line(12, stations=[6])  # dopo il tratto fino alla stazione servono più dell'80% per arrivare
+    r = Planner(G, CAR, 20).plan(0, 11, 1.0, 0.1, algorithm="greedy")
+    assert r.charges[0][4] > 0.8 and r.arrival_soc >= 0.1 - 1e-9
+
+
 def test_station_legs_are_computed_once_per_planner(city):
     p = Planner(city, SMALL, 20)
     p.plan(0, 143, algorithm="astar", start_soc=1.0, min_soc=0.1)

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 
 from evopt import api
+from evopt.planner import ALGORITHMS
 from evopt.router import NoRouteError
 from tests.test_router import CAR, line
 
@@ -14,8 +15,12 @@ PLACES = {"Alpha": (45.0, 0.0), "Beta": (45.0, 1.1), "Far": (50.0, 5.0)}
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(api, "VEHICLES", {"Test car": CAR})
+    api.NETWORKS.clear()
+    api.PLANNERS.clear()
+    loads = []
 
     def network(place, progress=None):
+        loads.append(place)
         for stage in ("roads", "stations", "power"):
             progress and progress(stage)
         G = line(12, stations=[6])
@@ -28,7 +33,9 @@ def client(monkeypatch):
 
     monkeypatch.setattr(api, "load_network", network)
     monkeypatch.setattr(api, "geocode", geocode)
-    return TestClient(api.app)
+    c = TestClient(api.app)
+    c.loads = loads
+    return c
 
 
 def body(**kw):
@@ -101,7 +108,7 @@ def test_unreachable_trip_explains_what_to_change(client, monkeypatch):
     def impossible(*a, **k):
         raise NoRouteError("x")
 
-    monkeypatch.setattr(api, "plan_route", impossible)
+    monkeypatch.setattr(api.Planner, "plan", impossible)
     job = run(client)
     assert job["error"]["code"] == "no_route" and "start charge" in job["error"]["message"]
 
@@ -133,3 +140,47 @@ def test_unknown_area_names_the_area(client, monkeypatch):
     monkeypatch.setattr(api, "load_network", nothing)
     job = run(client, area="Atlantis")
     assert job["error"]["code"] == "not_found" and "Atlantis" in job["error"]["message"]
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_every_algorithm_can_be_requested(client, algorithm):
+    job = run(client, algorithm=algorithm)
+    assert job["status"] == "done", job
+    assert job["result"]["algorithm"] == algorithm and job["result"]["stats"]["total_ms"] > 0
+
+
+def test_unknown_algorithm_is_rejected(client):
+    assert client.post("/api/plan", json=body(algorithm="magic")).status_code == 422
+
+
+def test_algorithms_are_described_for_the_interface(client):
+    info = client.get("/api/algorithms").json()
+    assert [a["id"] for a in info] == list(ALGORITHMS) and all(a["name"] and a["summary"] for a in info)
+
+
+def test_compare_returns_one_row_per_algorithm_with_gaps_to_the_best(client):
+    rows = run(client, compare=True)["result"]["comparison"]
+    assert [r["algorithm"] for r in rows] == list(ALGORITHMS)
+    gaps = [r["gap_pct"] for r in rows if r["time_min"] is not None]
+    assert min(gaps) == pytest.approx(0, abs=0.01) and all(g >= -0.01 for g in gaps)
+    ara = next(r for r in rows if r["algorithm"] == "ara")
+    assert ara["anytime"] and ara["anytime"][-1]["bound"] == pytest.approx(1.0)
+
+
+def test_compare_skips_the_exact_reference_on_large_graphs(client, monkeypatch):
+    monkeypatch.setattr(api, "EXACT_MAX_NODES", 5)
+    rows = run(client, compare=True)["result"]["comparison"]
+    exact = next(r for r in rows if r["algorithm"] == "exact")
+    assert exact["time_min"] is None and "too large" in exact["note"]
+
+
+def test_network_and_station_legs_are_reused_across_requests(client):
+    run(client)
+    run(client, temp_c=20)
+    assert client.loads == ["Test"] and len(api.PLANNERS) == 1
+    run(client, temp_c=5)
+    assert len(api.PLANNERS) == 2 and client.loads == ["Test"]
+
+
+def test_pareto_legs_can_be_requested(client):
+    assert run(client, legs="pareto")["status"] == "done"
