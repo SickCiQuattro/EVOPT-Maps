@@ -6,8 +6,10 @@ Dijkstra, A*, Weighted A* e ARA* risolvono questo grafo; "greedy" è un guidator
 e "exact" è una ricerca a etichette sulla rete stradale, senza grafo ridotto e con energia per arco senza arrotondamenti, usata come riferimento.
 """
 
+import hashlib
 import heapq
 import math
+import pickle
 import time
 from collections import namedtuple
 
@@ -45,7 +47,10 @@ class Planner:
         self._potential_cache = {}
         self.leg_searches = 0  # ricerche sul grafo stradale eseguite finora
         self._min_kwh_per_m = None
+        self._path_cache = {}  # (da, a, tempo, kWh) -> percorso del tratto
+        self._adj = None  # adiacenza compatta con energia per arco, costruita alla prima ricerca
         self._edge_cache = {}  # stazione -> archi del grafo ridotto verso le altre stazioni
+        self.table_dirty = False  # ci sono tratti nuovi non ancora salvati
         self._table = {}  # stazione -> {stazione: [Leg]} (valido finché grafo, veicolo e temperatura restano gli stessi)
 
     # ---------- energia ----------
@@ -60,16 +65,32 @@ class Planner:
     def _legs(self, src, targets, reverse=False):
         """{destinazione: [Leg]} da `src` (o verso `src` se reverse). Una sola ricerca sul grafo stradale."""
         self.leg_searches += 1
+        return self._search_legs(src, targets, reverse)
+
+    def _search_legs(self, src, targets, reverse=False):
         search_fn = self._pareto_legs if self.legs_mode == "pareto" else self._fastest_legs
         return search_fn(src, set(targets) - {src}, reverse)
 
-    def _edges(self, u, reverse):
-        if reverse:
-            return ((p, d) for p, _, d in self.G.in_edges(u, data=True))
-        return ((v, d) for _, v, d in self.G.out_edges(u, data=True))
+    def _edges_all(self):
+        self._edges(next(iter(self.G.nodes)))  # costruisce l'adiacenza
+        return self._adj[0].values()
+
+    def _edges(self, u, reverse=False):
+        """Archi (altro estremo, secondi, metri, kWh) uscenti da `u` (entranti se reverse), energia già calcolata."""
+        if (
+            self._adj is None
+        ):  # una volta per Planner: l'energia di un arco non cambia tra una ricerca e l'altra
+            out, inn = {}, {}
+            for u0, v0, d in self.G.edges(data=True):
+                arc = (d["travel_time"], d["length"], self._energy(d))
+                out.setdefault(u0, []).append((v0, *arc))
+                inn.setdefault(v0, []).append((u0, *arc))
+            self._adj = (out, inn)
+        return self._adj[1 if reverse else 0].get(u, ())
 
     def _fastest_legs(self, src, targets, reverse):
         # shortcut: energia del percorso più veloce, non del più parsimonioso; legs="pareto" lo evita
+        cap = self.vehicle.capacity_kwh
         best, prev, done = {src: (0.0, 0.0, 0.0)}, {}, set()
         heap = [(0.0, src)]
         while heap:
@@ -78,14 +99,14 @@ class Planner:
                 continue
             done.add(u)
             _, kwh, dist = best[u]
-            for v, d in self._edges(u, reverse):
-                nt = t + d["travel_time"]
+            for v, tt, length, e in self._edges(u, reverse):
+                nt = t + tt
                 if v in done or (v in best and best[v][0] <= nt):
                     continue
-                nk = kwh + self._energy(d)
-                if nk > self.vehicle.capacity_kwh:
+                nk = kwh + e
+                if nk > cap:
                     continue
-                best[v], prev[v] = (nt, nk, dist + d["length"]), u
+                best[v], prev[v] = (nt, nk, dist + length), u
                 heapq.heappush(heap, (nt, v))
         legs = {}
         for dst in targets:
@@ -108,12 +129,12 @@ class Planner:
                 continue
             best_e[node] = e
             settled.setdefault(node, []).append(i)
-            for v, d in self._edges(node, reverse):
-                ne = e + self._energy(d)
+            for v, tt, length, ev in self._edges(node, reverse):
+                ne = e + ev
                 if ne > cap or ne >= best_e.get(v, INF) - 1e-9:
                     continue
-                labels.append((v, t + d["travel_time"], ne, m + d["length"], i))
-                heapq.heappush(heap, (t + d["travel_time"], ne, len(labels) - 1))
+                labels.append((v, t + tt, ne, m + length, i))
+                heapq.heappush(heap, (t + tt, ne, len(labels) - 1))
         legs = {}
         for dst in targets:
             for i in settled.get(dst, ()):
@@ -127,8 +148,62 @@ class Planner:
 
     def _station_legs(self, s):
         if s not in self._table:
-            self._table[s] = self._legs(s, self.stations)
+            # la tabella tiene solo tempo, energia e metri: i percorsi (centinaia di nodi l'uno) si ricostruiscono
+            # per i soli tratti del viaggio scelto
+            self._table[s] = {
+                b: [Leg(leg.time_s, leg.kwh, leg.meters, None) for leg in ls]
+                for b, ls in self._legs(s, self.stations).items()
+            }
+            self.table_dirty = True
         return self._table[s]
+
+    def _leg_path(self, src, dst, leg):
+        """Percorso di un tratto della tabella: rifà la ricerca da `src` e prende l'etichetta uguale a `leg`."""
+        key = (src, dst, round(leg.time_s, 6), round(leg.kwh, 9))
+        if key not in self._path_cache:
+            for cand in self._search_legs(src, {dst}).get(dst, ()):
+                self._path_cache[(src, dst, round(cand.time_s, 6), round(cand.kwh, 9))] = cand.path
+        if key in self._path_cache:
+            return self._path_cache[key]
+        raise RuntimeError("leg changed between table and route")  # non succede: ricerca deterministica
+
+    # ---------- tabella su disco ----------
+    def fingerprint(self):
+        """Impronta dello scenario da cui dipendono i tratti: rete, stazioni, veicolo, temperatura, modalità."""
+        G = self.G
+        total = round(sum(d["travel_time"] + d["length"] for *_, d in G.edges(data=True)), 3)
+        spec = (
+            len(G),
+            G.number_of_edges(),
+            total,
+            sorted(self.stations),
+            self.vehicle,
+            self.temp_c,
+            self.legs_mode,
+        )
+        return hashlib.sha1(repr(spec).encode()).hexdigest()[:16]
+
+    def save_table(self, path):
+        """Salva la tabella dei tratti. I file sono locali e fidati (pickle): non caricarne di altrui."""
+        try:
+            with open(path, "wb") as f:
+                pickle.dump({"fingerprint": self.fingerprint(), "table": self._table}, f)
+        except OSError:
+            return False
+        self.table_dirty = False
+        return True
+
+    def load_table(self, path):
+        try:
+            with open(path, "rb") as f:
+                saved = pickle.load(f)
+            if saved["fingerprint"] != self.fingerprint():
+                return False
+            self._table, self._edge_cache = saved["table"], {}
+        except (OSError, pickle.UnpicklingError, EOFError, KeyError, TypeError, AttributeError):
+            return False
+        self.table_dirty = False
+        return True
 
     # ---------- piano ----------
     def plan(self, start, goal, start_soc=1.0, min_soc=0.1, algorithm="astar", **opts):
@@ -201,22 +276,23 @@ class Planner:
         """Tempo minimo e energia minima da ogni nodo a `goal`: due ricerche all'indietro sul grafo stradale."""
         if goal not in self._potential_cache:
             self._potential_cache[goal] = (
-                self._backward(goal, lambda d: d["travel_time"]),
-                self._backward(goal, self._energy),
+                self._backward(goal, 0),  # secondi
+                self._backward(goal, 2),  # kWh
             )
             while len(self._potential_cache) > 8:
                 del self._potential_cache[next(iter(self._potential_cache))]
         return self._potential_cache[goal]
 
-    def _backward(self, goal, weight):
+    def _backward(self, goal, field):
+        """Dijkstra all'indietro dal goal con il campo `field` degli archi (0 secondi, 2 kWh) come peso."""
         dist, done, heap = {goal: 0.0}, set(), [(0.0, goal)]
         while heap:
             w, u = heapq.heappop(heap)
             if u in done:
                 continue
             done.add(u)
-            for p, _, d in self.G.in_edges(u, data=True):
-                nw = w + weight(d)
+            for p, *arc in self._edges(u, reverse=True):
+                nw = w + arc[field]
                 if nw < dist.get(p, INF):
                     dist[p] = nw
                     heapq.heappush(heap, (nw, p))
@@ -227,7 +303,7 @@ class Planner:
         G, unit = self.G, self.unit
         if self._min_kwh_per_m is None:
             self._min_kwh_per_m = min(
-                self._energy(d) / d["length"] for _, _, d in G.edges(data=True) if d["length"] > 0
+                e / length for out in self._edges_all() for _, _, length, e in out if length > 0
             )
         speed, g = straight_speed(G), G.nodes[goal]
         p_max = max(
@@ -309,11 +385,12 @@ class Planner:
 
     def _build(self, found):
         path, dist, charges = [], 0.0, []
-        for (node, level, _), tag in zip(found.states, found.tags):
+        for ((node, level, _), tag), (nxt, _, _) in zip(zip(found.states, found.tags), found.states[1:]):
             if tag is None:  # arco verso lo stato terminale
                 continue
             if tag[0] == "drive":
-                path += tag[1].path if not path else tag[1].path[1:]
+                leg_path = tag[1].path or self._leg_path(node, nxt, tag[1])
+                path += leg_path if not path else leg_path[1:]
                 dist += tag[1].meters
             else:
                 if not charges or charges[-1][0] != node:
@@ -416,10 +493,10 @@ class Planner:
             if node == goal:
                 return self._exact_route(labels, i, t, expanded, (time.perf_counter() - t0) * 1000)
             nxt = []
-            for _, v, d in G.out_edges(node, data=True):
-                left = soc - self._energy(d)
+            for v, tt, length, e in self._edges(node):
+                left = soc - e
                 if left >= min_kwh - 1e-12:
-                    nxt.append((v, t + d["travel_time"], left, ("drive", node, v, d["length"])))
+                    nxt.append((v, t + tt, left, ("drive", node, v, length)))
             if node in self.stations and soc + self.unit <= cap + 1e-9:
                 secs = self._charge_secs(node) + (0.0 if charging else self.plug_in_s)
                 nxt.append((node, t + secs, soc + self.unit, ("charge", secs)))

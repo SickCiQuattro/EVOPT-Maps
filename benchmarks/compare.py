@@ -26,8 +26,10 @@ def synthetic(n, stations):
     return G, 0, len(G) - 1
 
 
-def run(G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fastest", skip=()):
-    planner = Planner(G, vehicle, temp_c, legs=legs)
+def run(
+    G, start, goal, vehicle, temp_c=20, start_soc=1.0, min_soc=0.1, legs="fastest", skip=(), plug_in_s=180
+):
+    planner = Planner(G, vehicle, temp_c, legs=legs, plug_in_s=plug_in_s)
     kw = {"start_soc": start_soc, "min_soc": min_soc}
     cold = planner.plan(start, goal, algorithm="astar_potential", **kw)
     results = {}

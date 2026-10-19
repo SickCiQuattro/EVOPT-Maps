@@ -152,3 +152,43 @@ def test_plug_in_time_discourages_useless_short_stops(city):
     costly = Planner(city, SMALL, 20, plug_in_s=900).plan(0, 143, 1.0, 0.1, algorithm="astar_potential")
     assert len(costly.charges) <= len(free.charges)
     assert costly.time_s >= free.time_s
+
+
+def test_weighted_search_makes_no_pointless_stops_once_a_stop_has_a_cost(city):
+    """Con stop gratuiti una ricerca golosa ne fa molti; col tempo di collegamento torna sensata."""
+    p = Planner(city, SMALL, 20, plug_in_s=180)
+    opt = p.plan(0, 143, 1.0, 0.1, algorithm="astar_potential")
+    w = p.plan(0, 143, 1.0, 0.1, algorithm="wastar", weight=3.0)
+    assert w.time_s <= 3.0 * opt.time_s + 1e-6
+    assert len(w.charges) <= len(opt.charges) + 1
+
+
+def test_station_table_keeps_no_paths_but_the_route_still_has_them(city):
+    p = Planner(city, SMALL, 20)
+    r = p.plan(0, 143, 1.0, 0.1, algorithm="astar")
+    assert r.path[0] == 0 and r.path[-1] == 143
+    assert all(leg.path is None for legs in p._table.values() for ls in legs.values() for leg in ls)
+    assert all(b in city[a] for a, b in zip(r.path, r.path[1:]))  # ogni passo è un arco vero
+
+
+def test_station_table_can_be_saved_and_reloaded(city, tmp_path):
+    first = Planner(city, SMALL, 20)
+    a = first.plan(0, 143, 1.0, 0.1, algorithm="astar")
+    assert first.save_table(tmp_path / "t.pkl")
+    again = Planner(city, SMALL, 20)
+    assert again.load_table(tmp_path / "t.pkl")
+    b = again.plan(0, 143, 1.0, 0.1, algorithm="astar")
+    assert b.time_s == pytest.approx(a.time_s) and b.path == a.path
+    assert again.leg_searches == 2  # solo partenza e arrivo: i tratti tra stazioni vengono dal disco
+
+
+def test_saved_table_is_ignored_when_the_scenario_differs(city, tmp_path):
+    Planner(city, SMALL, 20).plan(0, 143, 1.0, 0.1, algorithm="astar")
+    p = Planner(city, SMALL, 20)
+    p.plan(0, 143, 1.0, 0.1, algorithm="astar")
+    p.save_table(tmp_path / "t.pkl")
+    assert not Planner(city, SMALL, 5).load_table(tmp_path / "t.pkl")  # altra temperatura
+    assert not Planner(city, SMALL, 20, legs="pareto").load_table(tmp_path / "t.pkl")
+    (tmp_path / "bad.pkl").write_bytes(b"not a pickle")
+    assert not Planner(city, SMALL, 20).load_table(tmp_path / "bad.pkl")
+    assert not Planner(city, SMALL, 20).load_table(tmp_path / "missing.pkl")

@@ -13,10 +13,11 @@ PLACES = {"Alpha": (45.0, 0.0), "Beta": (45.0, 1.1), "Far": (50.0, 5.0)}
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     monkeypatch.setattr(api, "VEHICLES", {"Test car": CAR})
     api.NETWORKS.clear()
     api.PLANNERS.clear()
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path)
     loads = []
 
     def network(place, progress=None):
@@ -193,3 +194,12 @@ def test_missing_local_extract_is_reported_with_how_to_fix_it(client, monkeypatc
     monkeypatch.setattr(api, "load_network", missing)
     job = run(client, area="local:x")
     assert job["error"]["code"] == "not_found" and "benchmarks.extract" in job["error"]["message"]
+
+
+def test_station_legs_survive_a_restart(client):
+    run(client)
+    assert list(api.CACHE_DIR.glob("legs-*.pkl"))
+    api.PLANNERS.clear()  # come dopo un riavvio del server
+    run(client)
+    (planner,) = api.PLANNERS.values()
+    assert planner.leg_searches == 2  # partenza e arrivo; i tratti tra stazioni vengono dal disco
