@@ -8,7 +8,5 @@ path.html
 .ruff_cache/
 .pytest_cache/
 .env
-.impeccable/mocks/
-.impeccable/review/
-.impeccable/live/
 data/
+.impeccable/
