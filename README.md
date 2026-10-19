@@ -51,15 +51,16 @@ Without a key only OpenStreetMap is used, and stations with unknown power are as
 ```python
 from evopt.data import load_network
 from evopt.graph import nearest_node
-from evopt.router import plan_route
+from evopt.planner import Planner
 from evopt.vehicle import VEHICLES
 
 G = load_network("Pieve Emanuele, Italy")  # roads + charging stations
 start = nearest_node(G, 45.35, 9.17)
 goal = nearest_node(G, 45.33, 9.15)
 
-route = plan_route(G, start, goal, VEHICLES["Renault Twizy"], temp_c=-10, start_soc=0.15, min_soc=0.10)
-print(route.time_s / 60, "min,", len(route.charges), "charging stop(s)")
+planner = Planner(G, VEHICLES["Renault Twizy"], temp_c=-10)  # reuse it: station legs are computed once
+route = planner.plan(start, goal, start_soc=0.15, min_soc=0.10, algorithm="astar")
+print(route.time_s / 60, "min,", len(route.charges), "charging stop(s),", route.stats["expanded"], "states")
 ```
 
 ## How it works
@@ -70,8 +71,50 @@ print(route.time_s / 60, "min,", len(route.charges), "charging stop(s)")
    energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + aux(temperature) · time
    ```
 
-2. **Reduced graph.** The planner runs Dijkstra on travel time from the start and from every station, keeping only legs the battery can cover. This gives a small graph of start, goal and stations.
-3. **Search over battery state.** A second Dijkstra runs over `(node, charge level)` with the charge discretised to 1%. Driving spends charge, charging at a station adds it at the lower of the vehicle's and the station's power, and the trip must never go below the chosen arrival charge.
+2. **Reduced graph.** Dijkstra on travel time from the start and from every station keeps only the legs the battery can cover. The legs between stations are computed once per vehicle and temperature and reused by every later plan. This leaves a small graph of start, goal and stations.
+3. **Search over battery state.** A state is `(node, charge level)` with the charge in 1% steps. Driving spends levels, charging at a station adds one level at the lower of the vehicle's and the station's power, and the trip never goes below the chosen arrival charge. The goal is any state at the destination.
+
+Plain shortest-path search is not enough here: battery is a constrained resource, so the best route depends on where you charge and how much. That is why the search runs over `(node, charge)` and not over nodes.
+
+## Algorithms
+
+The same problem is solved by several algorithms, selectable under **Advanced** in the web app. Tick **Compare all algorithms** to run all of them on your trip and see the differences on the **Algorithms** page.
+
+| Algorithm | Guarantee | Idea |
+| --- | --- | --- |
+| Dijkstra | optimal | expands states by cost only |
+| A\* | optimal | adds the straight-line travel time to the goal as a heuristic |
+| A\*, energy-aware | optimal | heuristic also counts the minimum charging time still needed |
+| Weighted A\* (w=2) | at most 2x optimal | inflates the heuristic: far fewer states |
+| ARA\* | anytime, ends optimal | answers fast with a large weight, then improves it reusing earlier work, with a proven bound at each step |
+| Naive driver | none | goes to the charger nearest the destination and charges to 80% each time |
+| Exact reference | optimal at 1% charge steps | label search on the full road network, no reduced graph |
+
+The road-level search (Dijkstra, A\*, Weighted A\*, ARA\* between two nodes) is in `evopt/search.py`; the heuristic is straight-line distance over the best straight-line speed of any road, which is admissible and consistent by construction.
+
+Legs between chargers can use the single fastest road (default) or **Pareto labels** (time, energy), which keep slower but more efficient roads that the fastest-road shortcut would miss.
+
+### Measured results
+
+`uv run python -m benchmarks.compare` regenerates these. Synthetic grids with 40 stations and a battery that needs about four stops; times on one laptop core, station-leg table already built.
+
+| Grid | Algorithm | Trip (min) | vs best | States | Search (ms) |
+| --- | --- | --- | --- | --- | --- |
+| 60x60 (3,600 nodes) | Dijkstra | 21.88 | best | 7,282 | 30 |
+| | A\* | 21.88 | best | 7,190 | 38 |
+| | Weighted A\* | 22.66 | +3.6% | 411 | 4 |
+| | ARA\* (first answer, weight 3) | 24.19 | +10.6% | 236 | |
+| | Naive driver | 23.87 | +9.1% | | 26 |
+| | Exact reference | 21.90 | +0.1% | 299,645 | 1,746 |
+
+What the numbers say:
+
+- **Reusing the station legs is the biggest win.** Building the table for the 60x60 grid took 424 ms; every plan after that spends 30 to 40 ms.
+- **A\* helps little on the reduced graph** (a 1% reduction in states at 3,600 nodes, 41% on the smallest grid). The heuristic knows about distance but the hard part is the battery. The energy-aware heuristic stayed within a few states of plain A\* in these runs: it is admissible but loose.
+- **Weighted A\* and ARA\* are where search effort drops.** A weight of 2 expands 10 to 18 times fewer states (40x40 and 60x60 grids) for a trip 2 to 4% slower; ARA\*'s first answer needs 2 to 3% of the states of its final one.
+- **The naive driver loses 4 to 9% of the trip time** on these grids.
+- **The reduced graph agrees with the exact reference to within 0.2%** while being 12 to 60 times faster.
+- **Pareto legs cost about 7 to 8 times more** to build and gave the same trip on these grids; they matter where a fast road makes a leg infeasible.
 
 ## Project structure
 
@@ -80,14 +123,17 @@ print(route.time_s / 60, "min,", len(route.charges), "charging stop(s)")
 | `evopt/vehicle.py` | Vehicle data and the energy model |
 | `evopt/graph.py` | Road graph loading, nearest node, route geometry |
 | `evopt/stations.py` | Stations from OpenStreetMap and Open Charge Map, merging, snapping to the graph |
-| `evopt/router.py` | Route planning with charging stops |
+| `evopt/search.py` | Dijkstra, A*, Weighted A*, ARA* on a generic implicit graph |
+| `evopt/planner.py` | The `Planner`: energy legs, state graph, all algorithms, naive and exact baselines |
+| `evopt/router.py` | `Route`, `NoRouteError` and the one-call `plan_route` |
+| `benchmarks/compare.py` | Algorithm comparison on synthetic grids and cached cities |
 | `evopt/cache.py`, `evopt/data.py` | Expiring disk cache and one-call network loading |
 | `evopt/api.py` | FastAPI app: planning jobs, vehicles, static frontend |
 | `web/` | Static frontend (HTML, CSS, JS, Leaflet), no build step |
 | `tests/` | pytest suite |
 | `PRODUCT.md`, `DESIGN.md` | Product context and design system of the web interface |
 
-The API is small: `GET /api/vehicles`, `POST /api/plan` (returns a job id) and `GET /api/jobs/{id}` (status, stage, result or error).
+The API is small: `GET /api/vehicles`, `GET /api/algorithms`, `POST /api/plan` (returns a job id; accepts `algorithm`, `legs`, `compare`) and `GET /api/jobs/{id}` (status, stage, result or error).
 
 ## Development
 
@@ -108,7 +154,8 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 - No live charger availability.
 - Charging is modelled at constant power, so long stops are slightly optimistic.
 - Vehicle parameters are approximate values from public data sheets.
-- The energy of a leg is computed along the fastest path, not the most efficient one.
+- With the default `fastest` legs the energy of a leg is that of the fastest road, not the most efficient one (`pareto` removes this).
+- The efficient-frontier and exact searches are slow on big areas; the comparison skips the exact reference above 2,500 nodes.
 
 ## Credits
 
