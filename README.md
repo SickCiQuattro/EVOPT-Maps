@@ -13,11 +13,13 @@ It started as a university project for the Intelligent Systems course and has be
 ## Features
 
 - Real road network from OpenStreetMap, kept directed so one-way streets are respected.
-- Real charging stations from OpenStreetMap, completed with power data from Open Charge Map when an API key is set.
+- Real charging stations with their operator and name, from OpenStreetMap, completed with power data from Open Charge Map when an API key is set. Fast-charger sockets (CCS, CHAdeMO) hint at 50 kW when no power is published.
 - Physical energy model: rolling resistance, air drag, drivetrain efficiency and temperature-dependent climate load.
-- Time-optimal planning over battery state, so charging stops appear only when and where they pay off. The web app adds a fixed 3 minutes per stop for plugging in, which removes pointless one-minute stops (`Planner(plug_in_s=...)`).
-- Web interface with live progress, clear errors, a vehicle roster and an explanation of the model.
-- Expiring disk cache, so a city is downloaded once (roads for 30 days, stations for 7).
+- Charging that slows down above 80% on fast chargers, and a fixed 3 minutes per stop for plugging in (in the web app), so the plan avoids pointless one-minute stops.
+- Time-optimal planning over battery state, with eight algorithms you can switch and compare.
+- Web interface with live progress, clear errors, a vehicle roster and a comparison page.
+- Expiring disk cache for the road graph (30 days) and stations (7 days), and a saved table of the legs between chargers, so a trip is planned from disk after the first time.
+- Realistic tests on a local OpenStreetMap extract: no dependence on the public Overpass server.
 
 ## Getting started
 
@@ -30,7 +32,7 @@ uv sync
 uv run uvicorn evopt.api:app
 ```
 
-Open <http://127.0.0.1:8000>. The form is pre-filled with a small example that needs a charging stop.
+Open <http://127.0.0.1:8000>. The form is pre-filled with a small example that needs a charging stop; for a real 145 km trip see [Realistic test](#realistic-test).
 
 > [!NOTE]
 > The first plan for a new area downloads its roads and takes from a few seconds to a few minutes. After that it is instant. The public Overpass server can refuse large areas: use a city, not a region.
@@ -44,7 +46,7 @@ echo 'OCM_API_KEY=your_key' > .env
 uv run --env-file .env uvicorn evopt.api:app
 ```
 
-Without a key only OpenStreetMap is used, and stations with unknown power are assumed to be 22 kW.
+Without a key only OpenStreetMap is used, and stations with unknown power are assumed to be 22 kW. On a local extract the key also adds stations in tiles of 25 km along the whole area.
 
 ## Use it as a library
 
@@ -71,8 +73,8 @@ print(route.time_s / 60, "min,", len(route.charges), "charging stop(s),", route.
    energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + aux(temperature) · time
    ```
 
-2. **Reduced graph.** Dijkstra on travel time from the start and from every station keeps only the legs the battery can cover. The legs between stations are computed once per vehicle and temperature and reused by every later plan. This leaves a small graph of start, goal and stations.
-3. **Search over battery state.** A state is `(node, charge level)` with the charge in 1% steps. Driving spends levels, charging at a station adds one level at the lower of the vehicle's and the station's power, and the trip never goes below the chosen arrival charge. The goal is any state at the destination.
+2. **Reduced graph.** Dijkstra on travel time from the start and towards the goal keeps only the legs the battery can cover. The legs between stations are computed lazily, only for stations the search actually reaches, then reused by every later plan and saved on disk in `cache/` (they keep only time, energy and metres; the road path is rebuilt for the legs of the chosen trip). This leaves a small graph of start, goal and stations.
+3. **Search over battery state.** A state is `(node, charge level, charging)` with the charge in 1% steps. Driving spends levels; charging adds one level at a power that depends on the charge (it tapers above 80% on fast chargers); starting to charge costs a fixed plug-in time once per stop; and the trip never goes below the chosen arrival charge. The goal is any state at the destination.
 
 Plain shortest-path search is not enough here: battery is a constrained resource, so the best route depends on where you charge and how much. That is why the search runs over `(node, charge)` and not over nodes.
 
@@ -86,61 +88,72 @@ The same problem is solved by several algorithms, selectable under **Advanced** 
 | A\* | optimal | adds the straight-line travel time to the goal as a heuristic |
 | A\*, energy-aware | optimal | heuristic also counts a lower bound on the charging time still needed |
 | A\*, exact potentials | optimal | heuristic from two backward searches: true minimum drive time and minimum energy to the goal |
-| Weighted A\* (w=2) | at most 2x optimal | inflates the heuristic: far fewer states |
+| Weighted A\* (w=1.5) | at most 1.5x optimal | inflates the heuristic: fewer states, often a slower trip |
 | ARA\* | anytime, ends optimal | answers fast with a large weight, then improves it reusing earlier work, with a proven bound at each step |
 | Naive driver | none | goes to the charger nearest the destination and charges to 80% each time |
 | Exact reference | optimal at 1% charge steps | label search on the full road network, no reduced graph |
 
 The road-level search (Dijkstra, A\*, Weighted A\*, ARA\* between two nodes) is in `evopt/search.py`. Its default heuristic is straight-line distance over the best straight-line speed of any road, admissible and consistent by construction; optional ALT landmarks tighten it. The state search also prunes dominated states, a state being useless if another at the same place has more charge and no higher cost.
 
+The exact reference and the other algorithms are tested against each other: every optimal algorithm returns the same trip, Weighted A\* never exceeds its bound, ARA\* improves monotonically and ends optimal.
+
 Legs between chargers can use the single fastest road (default) or **Pareto labels** (time, energy), which keep slower but more efficient roads that the fastest-road shortcut would miss.
 
 ### Measured results
 
-The benchmark tables use no plug-in time (`plug_in_s=0`); in the web app the same Milano to Torino trip becomes a single 33-minute stop once 3 minutes per stop are charged.
+Regenerate with `uv run python -m benchmarks.compare` (synthetic grids) and `uv run --env-file .env python -m benchmarks.compare --local milano-torino` (real roads, see [Realistic test](#realistic-test)). One laptop core, pure Python, 3 minutes of plug-in time per stop.
 
-Everything below is regenerated by `uv run python -m benchmarks.compare` (synthetic grids) and `... --local milano-torino` (real roads, see [Realistic test](#realistic-test)). One laptop core, pure Python.
-
-**Real trip: Milano Duomo to Torino Porta Nuova** (47,068 nodes, 86,195 edges, 506 charger nodes). Renault Twingo Electric (22 kWh), 0 °C, from 90% to at least 10%.
+**Real trip: Milano Duomo to Torino Porta Nuova** (47,068 nodes, 86,195 edges, 859 charger nodes). Renault Twingo Electric (22 kWh), 0 °C, from 90% to at least 10%. The best plan is one 33-minute stop and 113.8 minutes in total.
 
 Road-level search between the two points:
 
 | Algorithm | Trip (min) | States | ms |
 | --- | --- | --- | --- |
 | Dijkstra | 80.84 | 40,202 | 106 |
-| A\*, straight line | 80.84 | 17,580 | 120 |
-| A\* + ALT (8 landmarks) | 80.84 | 4,824 | 31 |
+| A\*, straight line | 80.84 | 17,580 | 121 |
+| A\* + ALT (8 landmarks) | 80.84 | 4,824 | 33 |
 | Weighted A\* (w=2) | 95.92 (+18.7%) | 5,024 | 15 |
 | ARA\*, first answer (w=3) | 95.92 (+18.7%) | 632 | |
-| ARA\*, final | 80.84 | 18,013 | 57 |
+| ARA\*, final | 80.84 | 18,013 | 56 |
 
-ALT needs 1.8 s of preprocessing, once per graph.
+ALT needs 1.9 s of preprocessing, once per graph.
 
-Electric trip, with charging:
+Electric trip, with charging (legs already computed):
 
 | Algorithm | Trip (min) | Stops | States | Search (ms) |
 | --- | --- | --- | --- | --- |
-| Dijkstra | 110.84 | 3 | 15,213 | |
-| A\*, straight line | 110.84 | 3 | 9,657 | 681 |
-| A\*, energy-aware | 110.84 | 3 | 8,703 | 828 |
-| **A\*, exact potentials** | 110.84 | 3 | **2,873** | **237** |
-| Weighted A\* (w=2) | 125.05 (+12.8%) | 6 | 53 | 5 |
-| ARA\* | 110.84 | 2 | 6,756 | 490 |
-| Naive driver | 144.65 (+30.5%) | 1 | 2 | 243 |
+| Dijkstra | 113.84 | 1 | 41,750 | 24,286 (also builds the missing legs) |
+| A\*, straight line | 113.84 | 1 | 28,253 | 3,271 |
+| A\*, energy-aware | 113.84 | 1 | 24,793 | 3,168 |
+| **A\*, exact potentials** | 113.84 | 1 | **8,486** | **993** |
+| Weighted A\* (w=1.5) | 124.15 (+9.1%) | 4 | 1,309 | 361 |
+| ARA\* | 113.84 | 1 | 27,542 | 3,740 |
+| Naive driver | 147.65 (+29.7%) | 1 | 2 | 107 |
 
-The first plan is slower because it computes the legs between the stations the search reaches: 18 s and 168 road searches with the best heuristic. Computing the legs for all 506 stations took 54 s, and Dijkstra, which reaches most of them, spent about 31 s on the rest.
+Weighted A\* trades quality for effort in a steep way on this trip:
 
-**Synthetic grid, 60x60** (3,600 nodes, 80 stations, trip needing four stops): Dijkstra 6,790 states, A\* 6,698, A\* with exact potentials 2,539, Weighted A\* 238 states but 7.9% slower, naive driver 2.3% slower, exact reference 299,645 states and 12 to 60 times slower than the reduced graph for a result within 0.2%.
+| Weight | Trip | States | vs optimal states |
+| --- | --- | --- | --- |
+| 1.05 | +0.0% | 7,781 | 92% |
+| 1.1 | +3.3% | 7,104 | 84% |
+| 1.25 | +3.2% | 4,778 | 56% |
+| 1.5 | +9.1% | 1,309 | 15% |
+| 2.0 | +16.2% | 109 | 1% |
+
+ARA\* anytime profile: weight 3 gives +32% after 60 states, weight 2 gives +13.6% after 100, weight 1.5 gives +10.2% after 2,033 states (7% of its final effort), then the optimum after 27,542.
+
+**Synthetic grid, 60x60** (3,600 nodes, 80 stations, three stops): Dijkstra 9,521 states, A\* 9,279, A\* with exact potentials 6,954; naive driver 1.6% slower; exact reference 596,823 states in 2.8 s against 47 ms for the reduced graph, within 0.1% of its result.
 
 What the numbers say:
 
-- **On real roads the heuristic matters a lot.** At road level ALT expands 8 times fewer states than Dijkstra and 3.6 times fewer than straight-line A\*, because real roads are far from straight. On the electric problem the exact backward potentials cut the states by 81% against Dijkstra.
-- **Search is not the main cost.** What dominates is running road searches for the legs between chargers (about 0.1 s each in Python). Computing them lazily, only for stations the search expands, and caching them is the biggest saving. A\* with a strong heuristic wins mostly because it needs fewer of them.
-- **Weighted A\* and ARA\* are fast but crude here.** Weight 2 saves nearly all the search and loses 13% on the real trip, with six stops instead of three. ARA\*'s answers sit at +18% (weight 3) and +8% (weight 1.5) before reaching the optimum, so its guarantee is useful but its early answers are not close to optimal on this problem.
-- **The naive driver loses 30% on the real trip**, charging to 80% at the charger nearest the destination each time, and 2 to 9% on the grids.
-- **The reduced graph agrees with the exact reference** to within 0.2% on the grids.
+- **On real roads the heuristic matters a lot.** At road level ALT expands 8 times fewer states than Dijkstra and 3.6 times fewer than straight-line A\*, because real roads are far from straight. On the electric problem the exact backward potentials expand 80% fewer states than Dijkstra and 70% fewer than A\*, and search 3.3 times faster. On a small synthetic grid the same gain is only 27%: it grows with the size of the problem.
+- **The energy-aware heuristic with a per-metre bound is barely better than plain A\*** (24,793 against 28,253 states). The potentials, which use the true minimum energy to the goal, are what pays.
+- **Most of the cost is the legs between chargers**, not the search: each is a road search of about 35 ms in Python. Computing them lazily, reusing them and saving them to disk is the biggest saving: the first plan on the corridor takes about 25 s including geocoding; after a restart it takes about 9 s (the 22 MB table is read from disk), and 3 s while the server stays up. A strong heuristic also wins because it reaches fewer stations.
+- **ARA\* is useful as a progress bar, not as a shortcut here.** Its answers improve steadily and each carries a proven bound, but to land within about 10% it needs 7% of the final effort, and the final optimum costs as much as plain A\*.
+- **Free stops mislead.** With no plug-in time a greedy search stops at every charger (10 stops where 4 were optimal); with a realistic plug-in time the same search behaves.
+- **The naive driver loses 30% on the real trip**, charging to 80% at the charger nearest the destination each time. On the easier grid it loses under 2%.
+- **The reduced graph agrees with the exact reference** within 0.1%.
 - **Pareto legs cost 7 to 8 times more** to build and gave the same trip on the grids.
-- **The energy-aware heuristic that only uses a per-metre energy bound is barely better than plain A\*** (8,703 against 9,657 states); the backward potentials, which use the real minimum energy to the goal, are what pays.
 
 ## Realistic test
 
@@ -153,7 +166,7 @@ uv run --group extract python -m benchmarks.extract data/nord-ovest.osm.pbf --bb
 uv run python -m benchmarks.compare --local milano-torino
 ```
 
-The extraction keeps motorways, trunk, primary and secondary roads, contracts nodes that are not junctions, and reads charging stations from the same file. The `data/` folder is not tracked by git.
+The extraction keeps motorways, trunk, primary and secondary roads, contracts nodes that are not junctions, and reads charging stations (with name, operator and power) from the same file. Select it in the web app with the area name `local:milano-torino`. With `OCM_API_KEY` set, Open Charge Map completes the stations in 25 km tiles (859 charger nodes instead of 506 on this corridor). The `data/` folder is not tracked by git.
 
 ## Project structure
 
@@ -190,8 +203,9 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 > This is an estimate, not a navigation system.
 
 - No traffic, road works, elevation or braking energy recovery.
-- No live charger availability.
-- Charging is modelled at constant power, so long stops are slightly optimistic.
+- No live charger availability, and no access rules: a car may be sent to a charger its network does not allow.
+- Charging power tapers with a simple curve (above 80% on fast chargers, constant on AC); real curves depend on temperature and battery state.
+- Station power is often missing in OpenStreetMap (217 of 1,400 on the corridor): it is estimated from the sockets, completed from Open Charge Map when a key is set, and otherwise assumed to be 22 kW.
 - Vehicle parameters are approximate values from public data sheets.
 - With the default `fastest` legs the energy of a leg is that of the fastest road, not the most efficient one (`pareto` removes this).
 - The efficient-frontier and exact searches are slow on big areas; the comparison skips the exact reference above 2,500 nodes.

@@ -15,7 +15,6 @@ from collections import Counter
 from pathlib import Path
 
 import networkx as nx
-import osmium
 import osmnx as ox
 from shapely.geometry import LineString
 
@@ -39,6 +38,8 @@ def _oneway(tags):
 
 
 def read(pbf, bbox):
+    import osmium  # solo qui: build() e il resto si provano anche senza pyosmium
+
     west, south, east, north = bbox
     inside = lambda loc: west <= loc.lon <= east and south <= loc.lat <= north
     ways, stations = [], []
