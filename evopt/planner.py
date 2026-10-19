@@ -44,6 +44,7 @@ class Planner:
         self._potential_cache = {}
         self.leg_searches = 0  # ricerche sul grafo stradale eseguite finora
         self._min_kwh_per_m = None
+        self._edge_cache = {}  # stazione -> archi del grafo ridotto verso le altre stazioni
         self._table = {}  # stazione -> {stazione: [Leg]} (valido finché grafo, veicolo e temperatura restano gli stessi)
 
     # ---------- energia ----------
@@ -139,23 +140,36 @@ class Planner:
         )
         return route
 
+    def _need(self, leg):
+        return max(0, math.ceil(leg.kwh / self.unit - 1e-9))
+
     def _reduced(self, start, goal, start_soc, min_soc):
-        """Tratti del grafo ridotto: dalla partenza e verso l'arrivo si ricalcola, tra stazioni si riusa la tabella."""
-        nodes = {start, goal} | self.stations
-        out = {}
-        for a, legs in [(start, self._legs(start, nodes))] + [
-            (s, self._station_legs(s)) for s in self.stations - {start}
-        ]:
-            out[a] = {b: ls for b, ls in legs.items() if b in (goal, *self.stations)}
-        for s, ls in self._legs(goal, self.stations - {goal}, reverse=True).items():
-            if s in out and s != start:
-                out[s][goal] = ls
-        unit = self.unit
-        edges = {
-            a: [(b, leg, max(0, math.ceil(leg.kwh / unit - 1e-9))) for b, ls in dests.items() for leg in ls]
-            for a, dests in out.items()
-            if a != goal
-        }
+        """Archi uscenti di un nodo del grafo ridotto, calcolati quando la ricerca lo espande.
+
+        Dalla partenza e verso l'arrivo si ricalcola a ogni viaggio; tra stazioni il tratto si calcola la prima
+        volta che una stazione viene espansa e poi resta in tabella. Le stazioni che la ricerca non tocca costano zero.
+        """
+        goal_legs = self._legs(goal, self.stations - {goal}, reverse=True)
+        start_edges = None
+        if start not in self.stations:
+            start_edges = [
+                (b, leg, self._need(leg))
+                for b, ls in self._legs(start, self.stations | {goal}).items()
+                for leg in ls
+            ]
+
+        def edges(node):
+            if node == start and start_edges is not None:
+                return start_edges
+            if node not in self._edge_cache:
+                self._edge_cache[node] = [
+                    (b, leg, self._need(leg)) for b, ls in self._station_legs(node).items() for leg in ls
+                ]
+            to_goal = goal_legs.get(node)
+            if not to_goal:
+                return self._edge_cache[node]
+            return self._edge_cache[node] + [(goal, leg, self._need(leg)) for leg in to_goal]
+
         return edges, int(start_soc * self.steps + 1e-9), math.ceil(min_soc * self.steps - 1e-9)
 
     def _state_graph(self, start, goal, start_soc, min_soc, need_potential=False):
@@ -171,7 +185,7 @@ class Planner:
             if node in stations and level < steps:
                 secs = self._charge_secs(node)
                 yield (node, level + 1), secs, ("charge", secs)
-            for b, leg, need in edges.get(node, ()):
+            for b, leg, need in edges(node):
                 if level - need >= min_level:
                     yield (b, level - need), leg.time_s, ("drive", leg)
 
