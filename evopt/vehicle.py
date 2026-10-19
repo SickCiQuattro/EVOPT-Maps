@@ -14,6 +14,7 @@ class Vehicle:
     drivetrain_eff: float = 0.85
     taper_from: float = 1.0  # carica oltre cui la ricarica rapida rallenta (1.0 = mai)
     taper_to: float = 0.3  # frazione della potenza che resta al 100%
+    regen_eff: float = 0.6  # quota dell'energia potenziale in discesa che si recupera in frenata
 
     def aux_kw(self, temp_c):
         """Servizi di bordo: base 0.5 kW più climatizzazione fuori dalla fascia 18-24 °C."""
@@ -27,12 +28,19 @@ class Vehicle:
         frac = min(1.0, (soc - self.taper_from) / (1.0 - self.taper_from))
         return peak * (1.0 - (1.0 - self.taper_to) * frac)
 
-    def edge_energy_kwh(self, length_m, speed_kph, time_s, temp_c=20):
-        # shortcut: velocità costante per tratto, niente pendenza né recupero, upgrade con dati di quota
+    def edge_energy_kwh(self, length_m, speed_kph, time_s, temp_c=20, rise_m=0.0):
+        """Energia di un tratto. `rise_m` è il dislivello (positivo in salita).
+
+        shortcut: velocità costante per tratto; in discesa il recupero riduce il consumo ma l'energia del tratto
+        non scende sotto zero (la batteria non si ricarica scendendo). Così i pesi restano non negativi e
+        Dijkstra, i limiti di batteria e le euristiche restano validi; upgrade: consumo con segno e saturazione.
+        """
         v = speed_kph / 3.6
         force = self.crr * self.mass_kg * G + 0.5 * AIR_DENSITY * self.cda * v * v
         drive = force * length_m / 3.6e6 / self.drivetrain_eff
-        return drive + self.aux_kw(temp_c) * time_s / 3600
+        gravity = self.mass_kg * G * rise_m / 3.6e6  # kWh di energia potenziale guadagnata o ceduta
+        climb = gravity / self.drivetrain_eff if rise_m > 0 else gravity * self.regen_eff
+        return max(0.0, drive + climb) + self.aux_kw(temp_c) * time_s / 3600
 
 
 # valori approssimativi da schede tecniche pubbliche

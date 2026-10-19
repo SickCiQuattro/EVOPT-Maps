@@ -28,18 +28,22 @@ ALGORITHM_INFO = {
     "exact": ("Exact reference", "Label search on the full road network, no reduced graph. Slow: for checking the others."),
 }  # fmt: skip
 Leg = namedtuple("Leg", "time_s kwh meters path")
+MAX_GRADE = 0.12  # pendenza media massima plausibile su un tratto tra due incroci
 GOAL = (-1, -1, False)  # stato terminale: raggiunto il goal con qualunque carica
 
 
 class Planner:
     """Pianifica viaggi su un grafo per un veicolo e una temperatura, riusando i tratti tra stazioni."""
 
-    def __init__(self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0):
+    def __init__(
+        self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0, elevation=True
+    ):
         if legs not in ("fastest", "pareto"):
             raise ValueError("legs must be 'fastest' or 'pareto'")
         self.G, self.vehicle, self.temp_c, self.steps, self.legs_mode = G, vehicle, temp_c, steps, legs
         self.stations = frozenset(n for n, d in G.nodes(data=True) if "charger_kw" in d)
         self.unit = vehicle.capacity_kwh / steps
+        self.use_elevation = elevation  # False: ignora le quote (confronto, o dati di quota inattendibili)
         self.plug_in_s = plug_in_s  # tempo fisso per sosta: collegare il cavo e avviare la ricarica
         self.dominance = (
             dominance  # scarta (nodo, livello) battuti da uno stato chiuso con più carica e costo minore
@@ -54,8 +58,24 @@ class Planner:
         self._table = {}  # stazione -> {stazione: [Leg]} (valido finché grafo, veicolo e temperatura restano gli stessi)
 
     # ---------- energia ----------
-    def _energy(self, d):
-        return self.vehicle.edge_energy_kwh(d["length"], d["speed_kph"], d["travel_time"], self.temp_c)
+    def _energy(self, d, rise_m=0.0):
+        return self.vehicle.edge_energy_kwh(
+            d["length"], d["speed_kph"], d["travel_time"], self.temp_c, rise_m
+        )
+
+    def _rise(self, u, v, d):
+        """Dislivello dell'arco u->v dalle quote dei nodi, limitato a una pendenza plausibile.
+
+        shortcut: un buco nei dati di quota darebbe salite assurde; oltre il 12% di pendenza media su un
+        tratto si taglia. Con quote assenti (o elevation=False) il dislivello è zero.
+        """
+        if not self.use_elevation:
+            return 0.0
+        eu, ev = self.G.nodes[u].get("elevation"), self.G.nodes[v].get("elevation")
+        if eu is None or ev is None:
+            return 0.0
+        limit = MAX_GRADE * d["length"]
+        return max(-limit, min(limit, ev - eu))
 
     def _charge_secs(self, node, level):
         """Secondi per caricare l'unità sopra `level`, alla potenza che la curva dà a metà di quell'unità."""
@@ -83,7 +103,7 @@ class Planner:
         ):  # una volta per Planner: l'energia di un arco non cambia tra una ricerca e l'altra
             out, inn = {}, {}
             for u0, v0, d in self.G.edges(data=True):
-                arc = (d["travel_time"], d["length"], self._energy(d))
+                arc = (d["travel_time"], d["length"], self._energy(d, self._rise(u0, v0, d)))
                 out.setdefault(u0, []).append((v0, *arc))
                 inn.setdefault(v0, []).append((u0, *arc))
             self._adj = (out, inn)
@@ -181,6 +201,10 @@ class Planner:
             self.vehicle,
             self.temp_c,
             self.legs_mode,
+            # le quote cambiano l'energia di ogni arco: senza (o spente) i tratti sono altri
+            round(sum(d.get("elevation", 0.0) for _, d in G.nodes(data=True)))
+            if self.use_elevation
+            else None,
         )
         return hashlib.sha1(repr(spec).encode()).hexdigest()[:16]
 

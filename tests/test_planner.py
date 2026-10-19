@@ -215,3 +215,42 @@ def test_tapered_charging_is_consistent_across_algorithms(algorithm):
     assert (
         r.time_s >= ref.time_s * 0.99
     )  # nessun algoritmo può battere l'ottimo (tolleranza di discretizzazione)
+
+
+def hill(rise_m):
+    """Strada di 60 km (7 nodi) con una colonnina a metà, che sale di `rise_m` da un capo all'altro."""
+    G = line(7, stations=[3])
+    for n in G.nodes:
+        G.nodes[n]["elevation"] = rise_m * n / 6
+    return G
+
+
+def test_a_climb_costs_energy_and_a_descent_saves_some():
+    up, flat, down = (Planner(hill(r), CAR, 20)._edges(0)[0][3] for r in (400, 0, -400))
+    assert up > flat > down
+
+
+def test_elevation_can_be_switched_off_to_compare():
+    on = Planner(hill(400), CAR, 20)._edges(0)[0][3]
+    off = Planner(hill(400), CAR, 20, elevation=False)._edges(0)[0][3]
+    assert on > off == pytest.approx(Planner(hill(0), CAR, 20)._edges(0)[0][3])
+
+
+def test_a_climb_that_does_not_fit_in_the_battery_forces_a_stop():
+    kw = {"start_soc": 1.0, "min_soc": 0.1, "algorithm": "astar_potential"}
+    assert Planner(hill(0), CAR, 20).plan(0, 6, **kw).charges == []  # in piano ci si arriva senza fermarsi
+    assert Planner(hill(400), CAR, 20).plan(0, 6, **kw).charges  # in salita no
+    assert Planner(hill(-400), CAR, 20).plan(0, 6, **kw).charges == []  # in discesa meno ancora
+
+
+def test_unreasonable_dem_glitches_are_limited_to_a_plausible_grade():
+    G = line(2)
+    G.nodes[0]["elevation"], G.nodes[1]["elevation"] = 0.0, 9000.0  # un buco nel DEM: 9 km di salita in 10 km
+    arc = Planner(G, CAR, 20)._edges(0)[0]
+    capped = CAR.edge_energy_kwh(10_000, 100, 360, 20, rise_m=0.12 * 10_000)
+    assert arc[3] == pytest.approx(capped)
+
+
+def test_the_saved_table_knows_about_elevation(tmp_path):
+    a, b = Planner(hill(400), CAR, 20), Planner(hill(400), CAR, 20, elevation=False)
+    assert a.fingerprint() != b.fingerprint() != Planner(hill(0), CAR, 20).fingerprint()
