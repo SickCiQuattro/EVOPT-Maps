@@ -14,7 +14,7 @@ It started as a university project for the Intelligent Systems course and has be
 
 - Real road network from OpenStreetMap, kept directed so one-way streets are respected.
 - Real charging stations with their operator and name, from OpenStreetMap, completed with power data from Open Charge Map when an API key is set. Fast-charger sockets (CCS, CHAdeMO) hint at 50 kW when no power is published.
-- Physical energy model: rolling resistance, air drag, drivetrain efficiency, temperature-dependent climate load, and climbs and descents from terrain data.
+- Physical energy model, calibrated on public consumption figures for four vehicles: rolling resistance, air drag, drivetrain efficiency, a cold penalty per kilometre, urban stop-and-go, and climbs and descents from terrain data.
 - Charging that slows down above 80% on fast chargers, and a fixed 3 minutes per stop for plugging in (in the web app), so the plan avoids pointless one-minute stops.
 - Time-optimal planning over battery state, with eight algorithms you can switch and compare.
 - Web interface with live progress, clear errors, a vehicle roster and a comparison page.
@@ -105,15 +105,15 @@ Legs between chargers can use the single fastest road (default) or **Pareto labe
 
 Regenerate with `uv run python -m benchmarks.compare` (synthetic grids) and `uv run --env-file .env python -m benchmarks.compare --local milano-torino` (real roads, see [Realistic test](#realistic-test)). One laptop core, pure Python, 3 minutes of plug-in time per stop.
 
-**Real trip: Milano Duomo to Torino Porta Nuova** (47,068 nodes, 86,195 edges, 859 charger nodes). Renault Twingo Electric (22 kWh), 0 °C, from 90% to at least 10%. The best plan is one 33-minute stop and 113.8 minutes in total.
+**Real trip: Milano Duomo to Torino Porta Nuova** (47,068 nodes, 86,195 edges, 859 charger nodes). Renault Twingo Electric (21.3 kWh usable), 0 °C, from 90% to at least 10%, planned at the speed limit (130 km/h on the motorway). The best plan takes two stops and 142.6 minutes.
 
 Road-level search between the two points:
 
 | Algorithm | Trip (min) | States | ms |
 | --- | --- | --- | --- |
-| Dijkstra | 80.84 | 40,202 | 106 |
-| A\*, straight line | 80.84 | 17,580 | 121 |
-| A\* + ALT (8 landmarks) | 80.84 | 4,824 | 33 |
+| Dijkstra | 80.84 | 40,202 | 105 |
+| A\*, straight line | 80.84 | 17,580 | 120 |
+| A\* + ALT (8 landmarks) | 80.84 | 4,824 | 32 |
 | Weighted A\* (w=2) | 95.92 (+18.7%) | 5,024 | 15 |
 | ARA\*, first answer (w=3) | 95.92 (+18.7%) | 632 | |
 | ARA\*, final | 80.84 | 18,013 | 56 |
@@ -124,36 +124,38 @@ Electric trip, with charging (legs already computed):
 
 | Algorithm | Trip (min) | Stops | States | Search (ms) |
 | --- | --- | --- | --- | --- |
-| Dijkstra | 113.84 | 1 | 41,750 | 24,286 (also builds the missing legs) |
-| A\*, straight line | 113.84 | 1 | 28,253 | 3,271 |
-| A\*, energy-aware | 113.84 | 1 | 24,793 | 3,168 |
-| **A\*, exact potentials** | 113.84 | 1 | **8,486** | **993** |
-| Weighted A\* (w=1.5) | 124.15 (+9.1%) | 4 | 1,309 | 361 |
-| ARA\* | 113.84 | 1 | 27,542 | 3,740 |
-| Naive driver | 147.65 (+29.7%) | 1 | 2 | 107 |
+| Dijkstra | 142.61 | 2 | 48,638 | 17,034 (also builds the missing legs) |
+| A\*, straight line | 142.61 | 2 | 41,790 | 4,090 |
+| A\*, energy-aware | 142.61 | 2 | 41,265 | 3,944 |
+| **A\*, exact potentials** | 142.61 | 2 | **16,040** | **1,769** |
+| Weighted A\* (w=1.5) | 153.13 (+7.4%) | 4 | 4,700 | 703 |
+| ARA\* | 142.61 | 2 | 52,816 | 6,076 |
+| Naive driver | 195.34 (+37.0%) | 2 | 3 | 120 |
+
+The naive driver heads for the reachable charger nearest the destination, ignoring chargers slower than half the vehicle's maximum charge power when a faster one is reachable, and charges to 80% (more if that is not enough to arrive). Without the power rule it picked a slow charger and lost 239%, which says more about the rule than about the planner, so it was added.
 
 Weighted A\* trades quality for effort in a steep way on this trip:
 
 | Weight | Trip | States | vs optimal states |
 | --- | --- | --- | --- |
-| 1.05 | +0.0% | 7,781 | 92% |
-| 1.1 | +3.3% | 7,104 | 84% |
-| 1.25 | +3.2% | 4,778 | 56% |
-| 1.5 | +9.1% | 1,309 | 15% |
-| 2.0 | +16.2% | 109 | 1% |
+| 1.05 | +0.0% | 15,850 | 99% |
+| 1.1 | +0.0% | 13,990 | 87% |
+| 1.25 | +5.2% | 9,345 | 58% |
+| 1.5 | +7.4% | 4,700 | 29% |
+| 2.0 | +24.9% | 650 | 4% |
 
-ARA\* anytime profile: weight 3 gives +32% after 60 states, weight 2 gives +13.6% after 100, weight 1.5 gives +10.2% after 2,033 states (7% of its final effort), then the optimum after 27,542.
+ARA\* anytime profile: weight 3 gives +24.7% after 115 states, weight 2 gives +14.8% after 154, weight 1.5 gives +11.1% after 7,914 states (15% of its final effort), then the optimum after 52,816.
 
 **Synthetic grid, 60x60** (3,600 nodes, 80 stations, three stops): Dijkstra 9,521 states, A\* 9,279, A\* with exact potentials 6,954; naive driver 1.6% slower; exact reference 596,823 states in 2.8 s against 47 ms for the reduced graph, within 0.1% of its result.
 
 What the numbers say:
 
-- **On real roads the heuristic matters a lot.** At road level ALT expands 8 times fewer states than Dijkstra and 3.6 times fewer than straight-line A\*, because real roads are far from straight. On the electric problem the exact backward potentials expand 80% fewer states than Dijkstra and 70% fewer than A\*, and search 3.3 times faster. On a small synthetic grid the same gain is only 27%: it grows with the size of the problem.
-- **The energy-aware heuristic with a per-metre bound is barely better than plain A\*** (24,793 against 28,253 states). The potentials, which use the true minimum energy to the goal, are what pays.
-- **Most of the cost is the legs between chargers**, not the search: each is a road search of about 35 ms in Python. Computing them lazily, reusing them and saving them to disk is the biggest saving: the first plan on the corridor takes about 25 s including geocoding; after a restart it takes about 9 s (the 22 MB table is read from disk), and 3 s while the server stays up. A strong heuristic also wins because it reaches fewer stations.
-- **ARA\* is useful as a progress bar, not as a shortcut here.** Its answers improve steadily and each carries a proven bound, but to land within about 10% it needs 7% of the final effort, and the final optimum costs as much as plain A\*.
+- **On real roads the heuristic matters a lot.** At road level ALT expands 8 times fewer states than Dijkstra and 3.6 times fewer than straight-line A\*, because real roads are far from straight. On the electric problem the exact backward potentials expand 67% fewer states than Dijkstra and 62% fewer than A\*, and search 2.3 times faster than A\*. On a small synthetic grid the same gain is only 27%: it grows with the size of the problem.
+- **The energy-aware heuristic with a per-metre bound is barely better than plain A\*** (41,265 against 41,790 states). The potentials, which use the true minimum energy to the goal, are what pays.
+- **Most of the cost is the legs between chargers**, not the search: each is a road search of about 35 ms in Python. Computing them lazily, reusing them and saving them to disk is the biggest saving. The first plan on this corridor takes about 28 s including geocoding; after a restart about 9 s (the table is read from disk) and 4.5 s while the server stays up. A strong heuristic also wins because it reaches fewer stations.
+- **ARA\* is useful as a progress bar, not as a shortcut here.** Its answers improve steadily and each carries a proven bound, but to land within about 11% it needs 15% of the final effort, and the final optimum costs more than plain A\*.
 - **Free stops mislead.** With no plug-in time a greedy search stops at every charger (10 stops where 4 were optimal); with a realistic plug-in time the same search behaves.
-- **The naive driver loses 30% on the real trip**, charging to 80% at the charger nearest the destination each time. On the easier grid it loses under 2%.
+- **The naive driver loses 37% on the real trip.** On the easier grid it loses under 2%.
 - **The reduced graph agrees with the exact reference** within 0.1%.
 - **Pareto legs cost 7 to 8 times more** to build and gave the same trip on the grids.
 
@@ -161,23 +163,48 @@ What the numbers say:
 
 Node elevations come from terrain tiles on AWS Open Data (Terrarium, about 30 m, no key or login), sampled with bilinear interpolation, cached under `cache/dem/` and lightly smoothed along the road network. Turn it off per trip under **Advanced** to see how much it matters. `Planner(elevation=False)` does the same in code.
 
-Measured on the real corridors, with the Tesla Model 3 (54 kWh) so a leg fits the battery:
+Measured on the real corridors, with the Tesla Model 3 (49 kWh usable) so a leg fits the battery:
 
 | Trip | Net climb | Energy, flat | Energy, with elevation | Difference |
 | --- | --- | --- | --- | --- |
-| Milano to Torino, 145 km | +120 m | 27.62 kWh | 28.73 kWh | +1.11 kWh |
-| Torino to Milano | −120 m | 27.14 kWh | 27.34 kWh | +0.20 kWh |
-| Torino to Courmayeur, 149 km | +967 m | 25.10 kWh | 30.80 kWh | **+23%** |
-| Courmayeur to Torino | −967 m | 25.13 kWh | 24.43 kWh | −3% |
+| Milano to Torino, 145 km | +120 m | 32.23 kWh | 33.25 kWh | +1.01 kWh |
+| Torino to Milano | −120 m | 31.62 kWh | 31.77 kWh | +0.14 kWh |
+| Torino to Courmayeur, 149 km | +967 m | 28.97 kWh | 34.25 kWh | **+18%** |
+| Courmayeur to Torino | −967 m | 29.02 kWh | 28.16 kWh | −3% |
 
-With the Twingo (22 kWh, 0 °C, 3 minutes per stop), Torino to Courmayeur goes from 113.6 to 123.2 minutes, the stop growing from 24 to 34 minutes. The same trip in the web app, with Courmayeur geocoded at 1,677 m, goes from 2 h 00 to 2 h 11.
+With the Twingo (21.3 kWh usable, 0 °C, 3 minutes per stop), Torino to Courmayeur goes from 134.4 to 147.3 minutes and from one stop to two. The same trip in the web app, with Courmayeur geocoded at 1,677 m, goes from 2 h 20 to 2 h 35.
 
 What to trust, and what not:
 
-- **Climbs are close to physics:** the Torino to Courmayeur climb costs 5.7 kWh against about 5.3 kWh of potential energy over efficiency.
-- **Descents are prudent:** the model gives back 60% and never below zero, so Courmayeur to Torino saves 0.7 kWh where the physics suggests 1.5 to 2.7.
+- **Climbs are close to physics:** the Torino to Courmayeur climb costs 5.3 kWh against about 4.9 kWh of potential energy over efficiency.
+- **Descents are prudent:** the model gives back 60% and never below zero, so Courmayeur to Torino saves 0.9 kWh where the physics suggests 1.5 to 2.7.
 - **Elevation noise is real.** On the flat Milano to Torino corridor, raw terrain data added about +0.9 kWh of spurious energy in both directions (bridges and viaducts read as dips, so climbs are paid in full and descents only partly refunded). Smoothing the elevations along the network brings it to about +0.5 kWh, roughly 2%, part of which is real rolling terrain. On the Torino to Courmayeur path the gross ascent is 442 m and the gross descent 1,409 m for a net −967 m, which is why the app shows the net climb and the highest point, not the gross figures.
 - Segments steeper than a 12% average are capped, to protect against data glitches (39 of 446 segments on that path).
+
+### Calibration
+
+Vehicle consumption is calibrated on public figures from [EV Database](https://ev-database.org) for four of the five vehicles (the Twizy has no comparable data and keeps approximate values, marked as such in the app). The reference gives usable battery, kerb mass and consumption in town, on the motorway at a constant 110 km/h, and combined, in mild weather (23 °C) and in the cold (−10 °C, heating on). These are estimates built from tests and the WLTP cycle, not instrumented measurements of this project.
+
+Three parameters per vehicle are fitted, with rolling resistance (0.010) and drivetrain efficiency (0.90) fixed:
+
+1. the effective drag area, on the motorway consumption in mild weather;
+2. the cold penalty per kilometre, on the difference between cold and mild on the motorway;
+3. the stop-and-go overhead below 70 km/h, on the urban consumption in mild weather.
+
+The cold penalty is modelled per kilometre, not per hour, because the reference shows almost the same cold surcharge in town (54 to 57 Wh/km) and on the motorway (50 to 59 Wh/km), which constant heating power would not.
+
+Before and after, range at 110 km/h against the reference (`uv run python -m benchmarks.calibrate` prints every point):
+
+| Vehicle | Mild, before | Cold, before | Mild and cold, after | Urban cold, held out |
+| --- | --- | --- | --- | --- |
+| Tesla Model 3 SR+ | +18% | +32% | 0% | −4% |
+| Renault Twingo Electric | +20% | +37% | 0% | +3% |
+| Fiat 500e | +21% | +36% | 0% | −3% |
+| MINI Electric | +19% | +37% | 0% | 0% |
+
+The earlier model was too optimistic: it overstated range at 110 km/h by 18 to 37%. The last column is a point the fit never used (urban consumption in the cold), predicted within 4%. The calibration also changed the plans: Milano to Torino with the Twingo went from one stop and 113.8 minutes to two stops and 142.6 minutes.
+
+Limits: the fit leans on one source and on a modelled "constant 110 km/h"; hot-weather consumption (above 24 °C) is not calibrated; the urban term is fitted at one point (50 km/h); the plans run at the speed limit, so on a motorway at 130 km/h consumption is about a third above the 110 km/h reference.
 
 ## Realistic test
 
@@ -235,7 +262,7 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 - No live charger availability, and no access rules: a car may be sent to a charger its network does not allow.
 - Charging power tapers with a simple curve (above 80% on fast chargers, constant on AC); real curves depend on temperature and battery state.
 - Station power is often missing in OpenStreetMap (217 of 1,400 on the corridor): it is estimated from the sockets, completed from Open Charge Map when a key is set, and otherwise assumed to be 22 kW.
-- Vehicle parameters are approximate values from public data sheets.
+- Vehicle parameters are calibrated on EV Database estimates for four of five vehicles (see [Calibration](#calibration)); the Twizy is approximate.
 - With the default `fastest` legs the energy of a leg is that of the fastest road, not the most efficient one (`pareto` removes this).
 - The efficient-frontier and exact searches are slow on big areas; the comparison skips the exact reference above 2,500 nodes.
 
