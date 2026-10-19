@@ -135,3 +135,20 @@ def test_pareto_legs_find_the_efficient_road_the_fastest_leg_would_miss():
 def test_unknown_algorithm_is_rejected(city):
     with pytest.raises(ValueError, match="algorithm"):
         plan(city, "magic")
+
+
+@pytest.mark.parametrize("algorithm", ["dijkstra", "astar_potential", "exact", "greedy"])
+def test_plug_in_time_is_paid_once_per_stop(algorithm):
+    G = line(12, stations=[6])
+    base = Planner(G, CAR, 20).plan(0, 11, 1.0, 0.1, algorithm=algorithm)
+    slow = Planner(G, CAR, 20, plug_in_s=600).plan(0, 11, 1.0, 0.1, algorithm=algorithm)
+    assert len(slow.charges) == len(base.charges) == 1
+    assert slow.charges[0][2] == pytest.approx(base.charges[0][2] + 600)
+    assert slow.time_s == pytest.approx(base.time_s + 600)
+
+
+def test_plug_in_time_discourages_useless_short_stops(city):
+    free = Planner(city, SMALL, 20).plan(0, 143, 1.0, 0.1, algorithm="astar_potential")
+    costly = Planner(city, SMALL, 20, plug_in_s=900).plan(0, 143, 1.0, 0.1, algorithm="astar_potential")
+    assert len(costly.charges) <= len(free.charges)
+    assert costly.time_s >= free.time_s

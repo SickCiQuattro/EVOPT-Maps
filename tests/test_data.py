@@ -1,9 +1,10 @@
 import urllib.error
 
+import osmnx as ox
 import pytest
 
 from evopt import data
-from evopt.stations import Station
+from evopt.stations import Station, save_stations
 from tests.test_router import line
 
 
@@ -67,3 +68,18 @@ def test_progress_reports_each_stage_in_order(sources, tmp_path, monkeypatch):
     stages = []
     data.load_network("Test, Italy", cache_dir=tmp_path, progress=stages.append)
     assert stages == ["roads", "stations", "power"]
+
+
+def test_local_extract_is_loaded_from_disk_without_any_network_call(sources, tmp_path):
+    G = line(12)
+    G.graph["crs"] = "epsg:4326"
+    ox.save_graphml(G, tmp_path / "corridor.graphml")
+    save_stations([Station(45.0, 0.6, 50)], tmp_path / "corridor-stations.json")
+    net = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
+    assert chargers(net) == {6: 50}
+    assert sources == {"graph": 0, "osm": 0, "ocm": 0}
+
+
+def test_missing_local_extract_explains_how_to_make_it(sources, tmp_path):
+    with pytest.raises(FileNotFoundError, match="benchmarks.extract"):
+        data.load_network("local:nothing", data_dir=tmp_path)
