@@ -94,7 +94,7 @@ function paintSpec() {
   const spec = $("vehicle-spec");
   spec.replaceChildren();
   if (!v) return;
-  spec.append(`${v.capacity_kwh} kWh battery · charges at up to ${v.max_charge_kw} kW`);
+  spec.append(`${v.capacity_kwh} kWh usable battery · charges at up to ${v.max_charge_kw} kW`);
   if (v.max_charge_kw < 10) spec.append(h("span", { class: "warn" }, "Slow charging: stops will be long."));
 }
 function clearFieldErrors() {
@@ -347,7 +347,7 @@ function renderRoster() {
     const on = v.name === current;
     return h("li", { class: "cell", "data-selected": String(on) },
       h("div", { class: "cell-head" }, v.name),
-      h("dl", {}, h("dt", {}, "Battery"), h("dd", { class: "num" }, `${v.capacity_kwh} kWh`), h("dt", {}, "Fastest charging"), h("dd", { class: "num" }, `${v.max_charge_kw} kW`)),
+      h("dl", {}, h("dt", {}, "Usable battery"), h("dd", { class: "num" }, `${v.capacity_kwh} kWh`), h("dt", {}, "Fastest charging"), h("dd", { class: "num" }, `${v.max_charge_kw} kW`), h("dt", {}, "Consumption data"), h("dd", {}, v.source ? "Calibrated" : "Approximate")),
       on ? h("span", { class: "selected-tag" }, "Selected") : h("button", { type: "button", class: "secondary", onclick: () => { $("vehicle").value = v.name; paintSpec(); persist(); location.hash = "#plan"; } }, "Use this vehicle"));
   }));
 }

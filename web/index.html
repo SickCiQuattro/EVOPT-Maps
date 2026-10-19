@@ -197,7 +197,7 @@
         <h3>How energy is estimated</h3>
         <p>For every road segment: rolling resistance plus air drag at the segment speed, divided by drivetrain efficiency, plus the energy to climb, less 60% of the energy a descent gives back, plus the power of heating or cooling over the time spent on it.</p>
         <p class="formula">energy = (Crr·m·g + ½·ρ·CdA·v²) · distance / efficiency + (0.5 kW + 0.1 kW per °C outside 18–24 °C) · time</p>
-        <p>Cold and heat therefore cost range. Vehicle figures are approximate values from public data sheets.</p>
+        <p>Cold costs range in proportion to distance, hot weather through the air conditioning. Four of the five vehicles are calibrated on public consumption figures from EV Database (at 110 km/h and in town, mild and cold), so range at 110 km/h matches those figures; the Twizy has only approximate values. Planned speed is the speed limit, which on a motorway means 130 km/h and a consumption about a third higher than at 110.</p>
 
         <h3>Where data comes from</h3>
         <ul>
@@ -213,7 +213,8 @@
           <li>Exact hills: elevation comes from 30 m terrain data and is smoothed. Bridges and tunnels can add noise, so the gross climb is not shown, only the net climb. Going downhill never charges the battery in this model, so descents are on the prudent side.</li>
           <li>Whether a charger is free or working right now.</li>
           <li>Charging slows near full on fast chargers, but only by a simple curve.</li>
-          <li>Where OpenStreetMap lacks a station's power it assumes 22 kW.</li>
+          <li>Where OpenStreetMap lacks a station's power it is estimated from the sockets, completed from Open Charge Map when available, and otherwise assumed to be 22 kW.</li>
+          <li>Urban consumption is corrected for stop-and-go driving below 70 km/h from a single reference point, and hot-weather consumption is not calibrated.</li>
         </ul>
         <p>Source code: <a href="https://github.com/PasticciniTeams/EVOPT-Maps">PasticciniTeams/EVOPT-Maps</a>. Authors: Filippo Camossi and Daniele Cioli.</p>
       </div>
