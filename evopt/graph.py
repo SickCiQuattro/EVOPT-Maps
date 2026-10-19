@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import osmnx as ox
 
@@ -33,3 +35,23 @@ def nearest_nodes(G, points):
 
 def nearest_node(G, lat, lon):
     return nearest_nodes(G, [(lat, lon)])[0][0]
+
+
+def path_coords(G, path):
+    """Coordinate (lat, lon) di un percorso, seguendo la geometria degli archi quando c'è."""
+    coords = [(G.nodes[path[0]]["y"], G.nodes[path[0]]["x"])]
+    for u, v in itertools.pairwise(path):
+        edge = min(G.get_edge_data(u, v).values(), key=lambda d: d["travel_time"])
+        geom = edge.get("geometry")
+        if geom is None:
+            coords.append((G.nodes[v]["y"], G.nodes[v]["x"]))
+            continue
+        points = [(y, x) for x, y in geom.coords]
+        if _gap(points[-1], coords[-1]) < _gap(points[0], coords[-1]):  # geometria salvata nel verso opposto
+            points.reverse()
+        coords += points[1:]
+    return coords
+
+
+def _gap(a, b):
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2

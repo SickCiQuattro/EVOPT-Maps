@@ -60,3 +60,10 @@ def test_ocm_outage_falls_back_to_osm_with_a_warning(sources, tmp_path, monkeypa
     with pytest.warns(UserWarning, match="Open Charge Map"):
         G = data.load_network("Test, Italy", cache_dir=tmp_path)
     assert chargers(G) == {6: 50}
+
+
+def test_progress_reports_each_stage_in_order(sources, tmp_path, monkeypatch):
+    monkeypatch.setenv("OCM_API_KEY", "k")
+    stages = []
+    data.load_network("Test, Italy", cache_dir=tmp_path, progress=stages.append)
+    assert stages == ["roads", "stations", "power"]
