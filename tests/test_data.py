@@ -10,7 +10,7 @@ from tests.test_router import line
 
 @pytest.fixture
 def sources(monkeypatch):
-    """Sostituisce solo i confini di rete (Overpass e OCM) e conta le chiamate."""
+    """Replaces only the network boundaries (Overpass and OCM) and counts the calls."""
     calls = {"graph": 0, "osm": 0, "ocm": 0}
 
     def graph(place):
@@ -27,7 +27,7 @@ def sources(monkeypatch):
         calls["ocm"] += 1
         return [Station(45.0, 0.2, 150)]
 
-    def flat_dem(G, cache_dir, **kw):  # i test non scaricano tile: quota fissa sui nodi che ne sono privi
+    def flat_dem(G, cache_dir, **kw):  # tests download no tiles: fixed elevation on nodes that lack one
         for _, d in G.nodes(data=True):
             d.setdefault("elevation", 5.0)
 
@@ -107,19 +107,19 @@ def test_local_extract_is_completed_with_open_charge_map_tiles(sources, tmp_path
         return [
             Station(45.0, 0.6, 150.0),
             Station(45.0, 0.2, 50.0),
-        ]  # la stessa stazione in ogni tessera: va deduplicata
+        ]  # the same station in every tile: it must be deduplicated
 
     monkeypatch.setattr(data, "fetch_ocm", tile)
     G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
-    assert len(calls) > 1  # copre il corridoio a tessere, non con un solo cerchio
+    assert len(calls) > 1  # covers the corridor in tiles, not with a single circle
     assert chargers(G) == {
         2: 50.0,
         6: 150.0,
-    }  # potenza dell'OCM dove l'estratto non l'aveva, stazione extra aggiunta
+    }  # OCM power where the extract had none, extra station added
     assert G.nodes[6]["charger_label"] == "Enel X"
     before = len(calls)
     data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
-    assert len(calls) == before  # seconda volta: le tessere vengono dalla cache
+    assert len(calls) == before  # second time: the tiles come from the cache
 
 
 def test_local_extract_survives_an_open_charge_map_outage(sources, tmp_path, monkeypatch):
@@ -132,7 +132,7 @@ def test_local_extract_survives_an_open_charge_map_outage(sources, tmp_path, mon
     monkeypatch.setattr(data, "fetch_ocm", down)
     with pytest.warns(UserWarning, match="Open Charge Map"):
         G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
-    assert chargers(G) == {6: 22.0}  # solo l'estratto, con la potenza predefinita
+    assert chargers(G) == {6: 22.0}  # the extract only, with the default power
 
 
 def test_elevation_is_added_once_and_survives_the_graph_cache(sources, tmp_path, monkeypatch):
@@ -146,11 +146,11 @@ def test_elevation_is_added_once_and_survives_the_graph_cache(sources, tmp_path,
 
     monkeypatch.setattr(data, "add_node_elevations", dem)
     G = data.load_network("Test, Italy", cache_dir=tmp_path)
-    assert G.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # 12 nodi annotati, una volta sola
+    assert G.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # 12 nodes annotated, once only
     again = data.load_network(
         "Test, Italy", cache_dir=tmp_path
-    )  # dalla cache: le quote sono già nel grafo salvato
-    assert again.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # nessun nodo da annotare di nuovo
+    )  # from the cache: elevations are already in the saved graph
+    assert again.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # no node left to annotate
 
 
 def test_missing_elevation_data_does_not_stop_planning(sources, tmp_path, monkeypatch):

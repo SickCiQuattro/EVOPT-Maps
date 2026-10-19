@@ -5,7 +5,7 @@ from benchmarks.extract import _oneway, _speed, build
 
 
 def way(*nodes, **tags):
-    """nodes: (id, lon, lat); tags: highway e il resto."""
+    """nodes: (id, lon, lat); tags: highway and the rest."""
     return list(nodes), tags
 
 
@@ -13,7 +13,7 @@ def test_speed_uses_maxspeed_or_the_road_class_default():
     assert _speed({"highway": "primary", "maxspeed": "50"}) == 50
     assert _speed({"highway": "primary"}) == 70
     assert _speed({"highway": "motorway"}) == 130
-    assert _speed({"highway": "primary", "maxspeed": "30 mph"}) == 70  # mph non gestito: valore di classe
+    assert _speed({"highway": "primary", "maxspeed": "30 mph"}) == 70  # mph not handled: class default
     assert _speed({"highway": "secondary", "maxspeed": "IT:urban"}) == 60
 
 
@@ -24,9 +24,9 @@ def test_motorways_and_oneway_tags_are_one_directional():
 
 def test_build_contracts_degree_two_nodes_and_keeps_junctions():
     a = way((1, 9.00, 45.0), (2, 9.01, 45.0), (3, 9.02, 45.0), (4, 9.03, 45.0), highway="primary")
-    b = way((3, 9.02, 45.0), (5, 9.02, 45.01), highway="secondary")  # incrocio in 3
+    b = way((3, 9.02, 45.0), (5, 9.02, 45.01), highway="secondary")  # junction at 3
     G = build([a, b])
-    assert set(G.nodes) == {1, 3, 4, 5}  # 2 non è un incrocio: contratto
+    assert set(G.nodes) == {1, 3, 4, 5}  # 2 is not a junction: contracted
     assert G.has_edge(1, 3) and G.has_edge(3, 1) and G.has_edge(3, 5)
     d = next(iter(G.get_edge_data(1, 3).values()))
     assert (
@@ -34,7 +34,7 @@ def test_build_contracts_degree_two_nodes_and_keeps_junctions():
         and d["speed_kph"] == 70
         and d["travel_time"] == pytest.approx(d["length"] / (70 / 3.6))
     )
-    assert len(d["geometry"].coords) == 3  # la geometria mantiene il nodo contratto
+    assert len(d["geometry"].coords) == 3  # the geometry keeps the contracted node
 
 
 def test_build_respects_one_way_streets_and_drops_disconnected_islands():

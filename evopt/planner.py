@@ -1,9 +1,9 @@
-"""Pianificazione di un viaggio elettrico con soste, con più algoritmi sullo stesso problema.
+"""Trip planning for an electric car with charging stops: several algorithms on the same problem.
 
-Il problema: partenza, arrivo e stazioni formano un grafo ridotto; uno stato è (nodo, livello di carica).
-Guidare tra due punti consuma livelli e costa tempo, caricare in una stazione aggiunge un livello e costa tempo.
-Dijkstra, A*, Weighted A* e ARA* risolvono questo grafo; "greedy" è un guidatore ingenuo di confronto
-e "exact" è una ricerca a etichette sulla rete stradale, senza grafo ridotto e con energia per arco senza arrotondamenti, usata come riferimento.
+The problem: start, goal and chargers form a reduced graph; a state is (node, charge level).
+Driving between two points spends levels and takes time; charging at a station adds a level and takes time.
+Dijkstra, A*, Weighted A* and ARA* solve this graph; "greedy" is a naive driver kept for comparison
+and "exact" is a label search on the road network (no reduced graph, unrounded per-edge energy), a reference.
 """
 
 import hashlib
@@ -28,12 +28,12 @@ ALGORITHM_INFO = {
     "exact": ("Exact reference", "Label search on the full road network, no reduced graph. Slow: for checking the others."),
 }  # fmt: skip
 Leg = namedtuple("Leg", "time_s kwh meters path")
-MAX_GRADE = 0.12  # pendenza media massima plausibile su un tratto tra due incroci
-GOAL = (-1, -1, False)  # stato terminale: raggiunto il goal con qualunque carica
+MAX_GRADE = 0.12  # highest plausible average grade on a stretch between two junctions
+GOAL = (-1, -1, False)  # terminal state: goal reached with any charge
 
 
 class Planner:
-    """Pianifica viaggi su un grafo per un veicolo e una temperatura, riusando i tratti tra stazioni."""
+    """Plans trips on a graph for one vehicle and temperature, reusing the legs between chargers."""
 
     def __init__(
         self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0, elevation=True
@@ -43,31 +43,33 @@ class Planner:
         self.G, self.vehicle, self.temp_c, self.steps, self.legs_mode = G, vehicle, temp_c, steps, legs
         self.stations = frozenset(n for n, d in G.nodes(data=True) if "charger_kw" in d)
         self.unit = vehicle.capacity_kwh / steps
-        self.use_elevation = elevation  # False: ignora le quote (confronto, o dati di quota inattendibili)
-        self.plug_in_s = plug_in_s  # tempo fisso per sosta: collegare il cavo e avviare la ricarica
+        self.use_elevation = (
+            elevation  # False: ignore elevations (for comparison, or unreliable terrain data)
+        )
+        self.plug_in_s = plug_in_s  # fixed time per stop: plugging in and starting the charge
         self.dominance = (
-            dominance  # scarta (nodo, livello) battuti da uno stato chiuso con più carica e costo minore
+            dominance  # prune (node, level) states beaten by a closed one with more charge, no higher cost
         )
         self._potential_cache = {}
-        self.leg_searches = 0  # ricerche sul grafo stradale eseguite finora
+        self.leg_searches = 0  # road-graph searches run so far
         self._min_kwh_per_m = None
-        self._path_cache = {}  # (da, a, tempo, kWh) -> percorso del tratto
-        self._adj = None  # adiacenza compatta con energia per arco, costruita alla prima ricerca
-        self._edge_cache = {}  # stazione -> archi del grafo ridotto verso le altre stazioni
-        self.table_dirty = False  # ci sono tratti nuovi non ancora salvati
-        self._table = {}  # stazione -> {stazione: [Leg]} (valido finché grafo, veicolo e temperatura restano gli stessi)
+        self._path_cache = {}  # (from, to, time, kWh) -> path of the leg
+        self._adj = None  # compact adjacency with per-edge energy, built on the first search
+        self._edge_cache = {}  # charger -> reduced-graph edges towards the other chargers
+        self.table_dirty = False  # new legs not saved yet
+        self._table = {}  # charger -> {charger: [Leg]}; valid while graph, vehicle and temperature stay the same
 
-    # ---------- energia ----------
+    # ---------- energy ----------
     def _energy(self, d, rise_m=0.0):
         return self.vehicle.edge_energy_kwh(
             d["length"], d["speed_kph"], d["travel_time"], self.temp_c, rise_m
         )
 
     def _rise(self, u, v, d):
-        """Dislivello dell'arco u->v dalle quote dei nodi, limitato a una pendenza plausibile.
+        """Elevation change of edge u->v from the node elevations, capped at a plausible grade.
 
-        shortcut: un buco nei dati di quota darebbe salite assurde; oltre il 12% di pendenza media su un
-        tratto si taglia. Con quote assenti (o elevation=False) il dislivello è zero.
+        shortcut: a hole in the elevation data would give absurd climbs; above a 12% average grade over a
+        stretch the rise is clipped. With no elevations (or elevation=False) the rise is zero.
         """
         if not self.use_elevation:
             return 0.0
@@ -78,13 +80,13 @@ class Planner:
         return max(-limit, min(limit, ev - eu))
 
     def _charge_secs(self, node, level):
-        """Secondi per caricare l'unità sopra `level`, alla potenza che la curva dà a metà di quell'unità."""
+        """Seconds to charge the unit above `level`, at the power the curve gives halfway through that unit."""
         kw = self.vehicle.charge_power_kw((level + 0.5) / self.steps, self.G.nodes[node]["charger_kw"])
         return self.unit / kw * 3600
 
-    # ---------- tratti sul grafo stradale ----------
+    # ---------- legs on the road graph ----------
     def _legs(self, src, targets, reverse=False):
-        """{destinazione: [Leg]} da `src` (o verso `src` se reverse). Una sola ricerca sul grafo stradale."""
+        """{destination: [Leg]} from `src` (or towards `src` if reverse). A single search of the road graph."""
         self.leg_searches += 1
         return self._search_legs(src, targets, reverse)
 
@@ -93,14 +95,12 @@ class Planner:
         return search_fn(src, set(targets) - {src}, reverse)
 
     def _edges_all(self):
-        self._edges(next(iter(self.G.nodes)))  # costruisce l'adiacenza
+        self._edges(next(iter(self.G.nodes)))  # builds the adjacency
         return self._adj[0].values()
 
     def _edges(self, u, reverse=False):
-        """Archi (altro estremo, secondi, metri, kWh) uscenti da `u` (entranti se reverse), energia già calcolata."""
-        if (
-            self._adj is None
-        ):  # una volta per Planner: l'energia di un arco non cambia tra una ricerca e l'altra
+        """Edges (other end, seconds, metres, kWh) leaving `u` (entering if reverse), energy already computed."""
+        if self._adj is None:  # once per Planner: an edge's energy does not change between searches
             out, inn = {}, {}
             for u0, v0, d in self.G.edges(data=True):
                 arc = (d["travel_time"], d["length"], self._energy(d, self._rise(u0, v0, d)))
@@ -110,7 +110,7 @@ class Planner:
         return self._adj[1 if reverse else 0].get(u, ())
 
     def _fastest_legs(self, src, targets, reverse):
-        # shortcut: energia del percorso più veloce, non del più parsimonioso; legs="pareto" lo evita
+        # shortcut: energy of the fastest path, not of the most frugal one; legs="pareto" avoids it
         cap = self.vehicle.capacity_kwh
         best, prev, done = {src: (0.0, 0.0, 0.0)}, {}, set()
         heap = [(0.0, src)]
@@ -139,9 +139,9 @@ class Planner:
         return legs
 
     def _pareto_legs(self, src, targets, reverse, max_labels=6):
-        """Dijkstra a etichette (tempo, energia): tiene ogni compromesso non dominato, fino a `max_labels` per nodo."""
+        """Label-setting Dijkstra on (time, energy): keeps every non-dominated trade-off, up to `max_labels` per node."""
         cap = self.vehicle.capacity_kwh
-        labels = [(src, 0.0, 0.0, 0.0, -1)]  # nodo, tempo, kWh, metri, genitore
+        labels = [(src, 0.0, 0.0, 0.0, -1)]  # node, time, kWh, metres, parent
         heap, best_e, settled = [(0.0, 0.0, 0)], {}, {}
         while heap:
             t, e, i = heapq.heappop(heap)
@@ -169,8 +169,8 @@ class Planner:
 
     def _station_legs(self, s):
         if s not in self._table:
-            # la tabella tiene solo tempo, energia e metri: i percorsi (centinaia di nodi l'uno) si ricostruiscono
-            # per i soli tratti del viaggio scelto
+            # the table keeps only time, energy and metres: paths (hundreds of nodes each) are rebuilt
+            # for the legs of the chosen trip only
             self._table[s] = {
                 b: [Leg(leg.time_s, leg.kwh, leg.meters, None) for leg in ls]
                 for b, ls in self._legs(s, self.stations).items()
@@ -179,18 +179,20 @@ class Planner:
         return self._table[s]
 
     def _leg_path(self, src, dst, leg):
-        """Percorso di un tratto della tabella: rifà la ricerca da `src` e prende l'etichetta uguale a `leg`."""
+        """Path of a table leg: repeats the search from `src` and takes the label equal to `leg`."""
         key = (src, dst, round(leg.time_s, 6), round(leg.kwh, 9))
         if key not in self._path_cache:
             for cand in self._search_legs(src, {dst}).get(dst, ()):
                 self._path_cache[(src, dst, round(cand.time_s, 6), round(cand.kwh, 9))] = cand.path
         if key in self._path_cache:
             return self._path_cache[key]
-        raise RuntimeError("leg changed between table and route")  # non succede: ricerca deterministica
+        raise RuntimeError(
+            "leg changed between table and route"
+        )  # cannot happen: the search is deterministic
 
-    # ---------- tabella su disco ----------
+    # ---------- legs table on disk ----------
     def fingerprint(self):
-        """Impronta dello scenario da cui dipendono i tratti: rete, stazioni, veicolo, temperatura, modalità."""
+        """Fingerprint of what the legs depend on: network, chargers, vehicle, temperature, mode."""
         G = self.G
         total = round(sum(d["travel_time"] + d["length"] for *_, d in G.edges(data=True)), 3)
         spec = (
@@ -201,7 +203,7 @@ class Planner:
             self.vehicle,
             self.temp_c,
             self.legs_mode,
-            # le quote cambiano l'energia di ogni arco: senza (o spente) i tratti sono altri
+            # elevations change the energy of every edge: without them (or switched off) the legs differ
             round(sum(d.get("elevation", 0.0) for _, d in G.nodes(data=True)))
             if self.use_elevation
             else None,
@@ -209,7 +211,7 @@ class Planner:
         return hashlib.sha1(repr(spec).encode()).hexdigest()[:16]
 
     def save_table(self, path):
-        """Salva la tabella dei tratti. I file sono locali e fidati (pickle): non caricarne di altrui."""
+        """Save the legs table. Files are local and trusted (pickle): never load someone else's."""
         try:
             with open(path, "wb") as f:
                 pickle.dump({"fingerprint": self.fingerprint(), "table": self._table}, f)
@@ -230,7 +232,7 @@ class Planner:
         self.table_dirty = False
         return True
 
-    # ---------- piano ----------
+    # ---------- planning ----------
     def plan(self, start, goal, start_soc=1.0, min_soc=0.1, algorithm="astar", **opts):
         if algorithm not in ALGORITHMS:
             raise ValueError(f"unknown algorithm {algorithm!r}; choose one of {ALGORITHMS}")
@@ -245,10 +247,10 @@ class Planner:
         return max(0, math.ceil(leg.kwh / self.unit - 1e-9))
 
     def _reduced(self, start, goal, start_soc, min_soc):
-        """Archi uscenti di un nodo del grafo ridotto, calcolati quando la ricerca lo espande.
+        """Outgoing edges of a node of the reduced graph, computed when the search expands it.
 
-        Dalla partenza e verso l'arrivo si ricalcola a ogni viaggio; tra stazioni il tratto si calcola la prima
-        volta che una stazione viene espansa e poi resta in tabella. Le stazioni che la ricerca non tocca costano zero.
+        From the start and towards the goal they are recomputed for every trip; between chargers a leg is computed
+        the first time a charger is expanded, then kept in the table. Chargers the search never reaches cost nothing.
         """
         goal_legs = self._legs(goal, self.stations - {goal}, reverse=True)
         start_edges = None
@@ -298,10 +300,10 @@ class Planner:
         )
 
     def _potentials(self, goal):
-        """Tempo minimo e energia minima da ogni nodo a `goal`: due ricerche all'indietro sul grafo stradale."""
+        """Minimum time and minimum energy from every node to `goal`: two backward searches on the road graph."""
         if goal not in self._potential_cache:
             self._potential_cache[goal] = (
-                self._backward(goal, 0),  # secondi
+                self._backward(goal, 0),  # seconds
                 self._backward(goal, 2),  # kWh
             )
             while len(self._potential_cache) > 8:
@@ -309,7 +311,7 @@ class Planner:
         return self._potential_cache[goal]
 
     def _backward(self, goal, field):
-        """Dijkstra all'indietro dal goal con il campo `field` degli archi (0 secondi, 2 kWh) come peso."""
+        """Backward Dijkstra from the goal, using edge field `field` (0 seconds, 2 kWh) as the weight."""
         dist, done, heap = {goal: 0.0}, set(), [(0.0, goal)]
         while heap:
             w, u = heapq.heappop(heap)
@@ -324,7 +326,7 @@ class Planner:
         return dist
 
     def _heuristics(self, goal, min_level, need_potential=False):
-        """Euristiche consistenti sullo stato (nodo, livello): solo tempo, oppure tempo + ricarica minima ancora necessaria."""
+        """Consistent heuristics on the (node, level) state: time only, or time plus the minimum charging still needed."""
         G, unit = self.G, self.unit
         if self._min_kwh_per_m is None:
             self._min_kwh_per_m = min(
@@ -349,7 +351,7 @@ class Planner:
                 return 0.0
             node, level, _ = state
             meters = _hav(G.nodes[node]["y"], G.nodes[node]["x"], g["y"], g["x"])
-            # kWh che mancano al viaggio in linea d'aria, oltre a quelli disponibili sopra la soglia di arrivo
+            # kWh missing for a straight-line trip, beyond what is available above the arrival threshold
             deficit = e_min * meters - (level - min_level) * unit
             return meters / speed + max(0.0, deficit) / p_max * 3600
 
@@ -359,7 +361,7 @@ class Planner:
             node, level, _ = state
             t = times.get(node)
             if t is None:
-                return INF  # da qui il goal non si raggiunge
+                return INF  # the goal cannot be reached from here
             deficit = energies[node] - (level - min_level) * unit
             return t + max(0.0, deficit) / p_max * 3600
 
@@ -390,7 +392,7 @@ class Planner:
         return route
 
     def _prune(self):
-        # per nodo e per "sto già caricando", suffisso dei minimi: best[l] = g minimo tra gli stati chiusi con livello >= l
+        # per node and per "already charging": suffix minima, best[l] = least g among closed states with level >= l
         best = {}
 
         def prune(state, g):
@@ -399,7 +401,7 @@ class Planner:
             node, level, charging = state
             own = best.setdefault((node, charging), [INF] * (self.steps + 1))
             other = best.get((node, True))
-            # chi sta già caricando ha pagato il collegamento: batte chi non ha ancora cominciato
+            # a state already charging has paid the plug-in time: it beats one that has not started
             if g >= own[level] - 1e-9 or (not charging and other is not None and g >= other[level] - 1e-9):
                 return True
             for lv in range(level + 1):
@@ -411,7 +413,7 @@ class Planner:
     def _build(self, found):
         path, dist, charges = [], 0.0, []
         for ((node, level, _), tag), (nxt, _, _) in zip(zip(found.states, found.tags), found.states[1:]):
-            if tag is None:  # arco verso lo stato terminale
+            if tag is None:  # edge to the terminal state
                 continue
             if tag[0] == "drive":
                 leg_path = tag[1].path or self._leg_path(node, nxt, tag[1])
@@ -447,9 +449,9 @@ class Planner:
             start, goal, start_soc, min_soc, heuristic="potential", anytime={"eps": eps, "decrease": decrease}
         )
 
-    # ---------- confronti ----------
+    # ---------- baselines for comparison ----------
     def _plan_greedy(self, start, goal, start_soc, min_soc, charge_to=0.8):
-        """Guidatore ingenuo: va alla stazione raggiungibile più vicina alla meta e carica fino a `charge_to`."""
+        """Naive driver: heads for the reachable charger nearest the goal and charges up to `charge_to`."""
         t0 = time.perf_counter()
         cap = self.vehicle.capacity_kwh
         soc, node, t, dist, visited = start_soc * cap, start, 0.0, 0.0, {start}
@@ -459,14 +461,14 @@ class Planner:
                 b: min(ls, key=lambda leg: leg.time_s)
                 for b, ls in self._legs(node, self.stations | {goal}).items()
             }
-            if arrived:  # sosta: all'80%, o quanto serve per arrivare se non basta
+            if arrived:  # at a stop: charge to 80%, or as much as needed to arrive if that is not enough
                 target = charge_to * cap
                 if goal in legs:
                     target = max(target, min(cap, legs[goal].kwh + min_soc * cap))
                 added = max(0.0, target - soc)
                 if added > 0:
                     secs, level_kwh = self.plug_in_s, soc
-                    while level_kwh < soc + added - 1e-12:  # integra la curva di carica un'unità alla volta
+                    while level_kwh < soc + added - 1e-12:  # integrate the charging curve one unit at a time
                         step = min(self.unit, soc + added - level_kwh)
                         kw = self.vehicle.charge_power_kw(
                             (level_kwh + step / 2) / cap, self.G.nodes[node]["charger_kw"]
@@ -482,8 +484,8 @@ class Planner:
                 options = [b for b in reachable if b not in visited]
                 if not options:
                     raise NoRouteError("the naive driver is stranded")
-                # regola minima di buon senso: non ci si ferma a una colonnina molto più lenta del veicolo
-                # se ce n'è una decente a portata (altrimenti il confronto sarebbe con un uomo di paglia)
+                # common-sense rule: do not stop at a charger much slower than the vehicle if a decent one
+                # is reachable (otherwise the comparison would be against a straw man)
                 decent = [
                     b for b in options if self.G.nodes[b]["charger_kw"] >= 0.5 * self.vehicle.max_charge_kw
                 ]
@@ -504,18 +506,18 @@ class Planner:
         return route
 
     def _plan_exact(self, start, goal, start_soc, min_soc):
-        """Riferimento: ricerca a etichette (tempo, carica) sulla rete stradale, con dominanza.
+        """Reference: label search on (time, charge) over the road network, with dominance.
 
-        Nessun grafo ridotto, energia per arco senza arrotondamenti; la carica avanza a passi di un livello,
-        quindi a granularità fine ma non un ottimo assoluto.
+        No reduced graph and unrounded per-edge energy; charge advances in steps of one level,
+        so it is fine-grained but not an absolute optimum.
         """
         t0 = time.perf_counter()
         G, cap = self.G, self.vehicle.capacity_kwh
         min_kwh, h = min_soc * cap, time_heuristic(G, goal)
-        labels = [(start, 0.0, start_soc * cap, -1, None)]  # nodo, tempo, kWh, genitore, mossa
+        labels = [(start, 0.0, start_soc * cap, -1, None)]  # node, time, kWh, parent, move
         heap, best_soc, expanded = [(h(start), 0.0, 0)], {}, 0
 
-        def dominated(node, charging, soc):  # chi sta già caricando ha pagato il collegamento
+        def dominated(node, charging, soc):  # one already charging has paid the plug-in time
             keys = [(node, True)] if charging else [(node, False), (node, True)]
             return any(soc <= best_soc.get(k, -INF) + 1e-12 for k in keys)
 
@@ -524,7 +526,7 @@ class Planner:
             node, _, soc, _, move = labels[i]
             charging = move is not None and move[0] == "charge"
             if dominated(node, charging, soc):
-                continue  # dominata: esiste un'etichetta già chiusa con più carica (e tempo minore o uguale)
+                continue  # dominated: a closed label has more charge (and no greater time)
             best_soc[(node, charging)] = soc
             expanded += 1
             if node == goal:

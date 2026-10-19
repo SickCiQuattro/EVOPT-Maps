@@ -1,22 +1,22 @@
-"""Calibra il modello energetico dei veicoli su consumi di riferimento pubblici e riporta gli errori.
+"""Calibrate the vehicle energy model on public reference consumption and report the errors.
 
-Fonte dei dati: EV Database (https://ev-database.org), pagine dei singoli modelli, consultate il 19/10/2026.
-Sono stime costruite a partire da prove e dal ciclo WLTP, non misure strumentate di questo progetto:
-"mite" = 23 °C senza aria condizionata, "freddo" = -10 °C con riscaldamento, "autostrada" = 110 km/h costanti.
-Tutti i numeri sono Wh/km nell'ordine (città, autostrada, misto).
+Data source: EV Database (https://ev-database.org), one page per model, read on 2026-10-19.
+They are estimates built from tests and the WLTP cycle, not instrumented measurements of this project:
+"mild" = 23 °C with no air conditioning, "cold" = -10 °C with heating, "motorway" = a constant 110 km/h.
+All figures are Wh/km in the order (city, motorway, combined).
 
-Per ogni veicolo si adattano tre parametri:
-  - il CdA effettivo, sul consumo in autostrada con tempo mite (massa, Crr e rendimento restano fissi);
-  - la penalità del freddo per km, sulla differenza freddo/mite in autostrada;
-  - il sovraccosto urbano (accelerazioni e fermate), sul consumo in città con tempo mite.
-Verifiche su punti non usati: consumo in città al freddo e differenza freddo/mite in città.
+Three parameters are fitted per vehicle:
+  - the effective drag area, on the mild-weather motorway consumption (mass, Crr and efficiency stay fixed);
+  - the cold penalty per km, on the cold-minus-mild difference on the motorway;
+  - the urban overhead (acceleration and stops), on the mild-weather city consumption.
+Held-out checks: city consumption in the cold and the cold-minus-mild difference in town.
 
     uv run python -m benchmarks.calibrate
 """
 
 from evopt.vehicle import VEHICLES, G, Vehicle
 
-CRR, ETA, BASE_KW, COLD_SPAN = 0.010, 0.90, 0.5, 28  # COLD_SPAN: gradi da 18 a -10 °C
+CRR, ETA, BASE_KW, COLD_SPAN = 0.010, 0.90, 0.5, 28  # COLD_SPAN: degrees from 18 to -10 °C
 V110 = 110 / 3.6
 
 REFERENCE = {
@@ -42,7 +42,7 @@ REFERENCE = {
     },
 }  # fmt: skip
 
-# i parametri approssimativi usati prima della calibrazione (capacità lorda, massa e CdA da schede tecniche)
+# the approximate parameters used before calibration (gross capacity, mass and CdA from data sheets)
 UNCALIBRATED = {
     "Tesla Model 3 Standard Range Plus": Vehicle(54, 1700, 0.51, 170, taper_from=0.8),
     "Renault Twingo Electric": Vehicle(22, 1100, 0.62, 22),
@@ -53,7 +53,7 @@ UNCALIBRATED = {
 
 def fit(name):
     ref = REFERENCE[name]
-    drive = ref["mild"][1] / 1000 - BASE_KW / 110  # kWh/km di sola trazione a 110 km/h
+    drive = ref["mild"][1] / 1000 - BASE_KW / 110  # kWh/km of traction alone at 110 km/h
     force = drive * 3.6e6 / 1000 * ETA  # N
     cda = (force - CRR * ref["kerb_kg"] * G) / (0.5 * 1.2 * V110**2)
     cold = (ref["cold"][1] - ref["mild"][1]) / 1000 / COLD_SPAN
@@ -66,7 +66,7 @@ def fit(name):
         drivetrain_eff=ETA,
         heat_kw_per_c=0.0,
     )
-    stop_go = (ref["mild"][0] - wh_per_km(smooth, 50, 23)) / 1000  # kWh/km mancanti in città a 50 km/h
+    stop_go = (ref["mild"][0] - wh_per_km(smooth, 50, 23)) / 1000  # kWh/km missing in town at 50 km/h
     return Vehicle(
         ref["usable_kwh"], ref["kerb_kg"], round(cda, 3), ref["dc_kw"], crr=CRR, drivetrain_eff=ETA,
         taper_from=ref["taper_from"], heat_kw_per_c=0.0, cold_kwh_per_km_per_c=round(cold, 5),
@@ -76,22 +76,22 @@ def fit(name):
 
 
 def wh_per_km(vehicle, kph, temp_c):
-    """Consumo a velocità e temperatura costanti, su terreno piano."""
+    """Consumption at constant speed and temperature, on flat ground."""
     return vehicle.edge_energy_kwh(1000, kph, 3600 / kph, temp_c) * 1000
 
 
 def compare(name, vehicle):
     ref = REFERENCE[name]
     rows = {
-        "autostrada mite (adattato)": (wh_per_km(vehicle, 110, 23), ref["mild"][1]),
-        "autostrada freddo (adattato)": (wh_per_km(vehicle, 110, -10), ref["cold"][1]),
-        "città mite, a 50 km/h (adattato)": (wh_per_km(vehicle, 50, 23), ref["mild"][0]),
-        "città freddo, a 50 km/h (verifica)": (wh_per_km(vehicle, 50, -10), ref["cold"][0]),
-        "diff. freddo-mite in città (verifica)": (
+        "motorway, mild (fitted)": (wh_per_km(vehicle, 110, 23), ref["mild"][1]),
+        "motorway, cold (fitted)": (wh_per_km(vehicle, 110, -10), ref["cold"][1]),
+        "city, mild, at 50 km/h (fitted)": (wh_per_km(vehicle, 50, 23), ref["mild"][0]),
+        "city, cold, at 50 km/h (held out)": (wh_per_km(vehicle, 50, -10), ref["cold"][0]),
+        "city cold-mild difference (held out)": (
             wh_per_km(vehicle, 50, -10) - wh_per_km(vehicle, 50, 23), ref["cold"][0] - ref["mild"][0]
         ),
-        "autonomia autostrada mite (km)": (vehicle.capacity_kwh / wh_per_km(vehicle, 110, 23) * 1000, ref["range_hwy_mild"]),
-        "autonomia autostrada freddo (km)": (vehicle.capacity_kwh / wh_per_km(vehicle, 110, -10) * 1000, ref["range_hwy_cold"]),
+        "motorway range, mild (km)": (vehicle.capacity_kwh / wh_per_km(vehicle, 110, 23) * 1000, ref["range_hwy_mild"]),
+        "motorway range, cold (km)": (vehicle.capacity_kwh / wh_per_km(vehicle, 110, -10) * 1000, ref["range_hwy_cold"]),
     }  # fmt: skip
     return rows
 
@@ -100,19 +100,19 @@ def main():
     for name in REFERENCE:
         before, after = UNCALIBRATED[name], fit(name)
         print(f"\n### {name}  ({REFERENCE[name]['url']})")
-        print(f"CdA {before.cda} -> {after.cda}, penalità freddo {after.cold_kwh_per_km_per_c} kWh/km/°C, "
-              f"capacità {before.capacity_kwh} -> {after.capacity_kwh} kWh, massa {before.mass_kg} -> {after.mass_kg} kg")  # fmt: skip
-        print(f"{'punto':40s} {'riferimento':>12s} {'prima':>9s} {'errore':>8s} {'dopo':>9s} {'errore':>8s}")
+        print(f"CdA {before.cda} -> {after.cda}, cold penalty {after.cold_kwh_per_km_per_c} kWh/km/°C, "
+              f"capacity {before.capacity_kwh} -> {after.capacity_kwh} kWh, mass {before.mass_kg} -> {after.mass_kg} kg")  # fmt: skip
+        print(f"{'point':40s} {'reference':>12s} {'before':>9s} {'error':>8s} {'after':>9s} {'error':>8s}")
         old, new = compare(name, before), compare(name, after)
         for key, (_, want) in new.items():
             b, a = old[key][0], new[key][0]
             print(
                 f"{key:40s} {want:12.1f} {b:9.1f} {100 * (b / want - 1):+7.0f}% {a:9.1f} {100 * (a / want - 1):+7.0f}%"
             )
-    print("\nVEHICLES attuali (vehicle.py) per confronto:")
+    print("\nCurrent VEHICLES (vehicle.py), for comparison:")
     for name in REFERENCE:
         v = VEHICLES[name]
-        print(f"  {name}: capacità {v.capacity_kwh} kWh, CdA {v.cda}, fonte {v.source}")
+        print(f"  {name}: capacity {v.capacity_kwh} kWh, CdA {v.cda}, source {v.source}")
 
 
 if __name__ == "__main__":

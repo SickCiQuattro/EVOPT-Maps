@@ -1,4 +1,4 @@
-"""Percorso più veloce tra due nodi della rete stradale: Dijkstra, A*, Weighted A* e ARA* (anytime)."""
+"""Fastest route between two nodes of the road network: Dijkstra, A*, Weighted A* and ARA* (anytime)."""
 
 import heapq
 import math
@@ -11,9 +11,9 @@ INF = math.inf
 class PathResult:
     path: list
     time_s: float
-    expanded: int  # nodi espansi (per ARA*: cumulativo su tutti i giri)
-    eps: float = 1.0  # inflazione dell'euristica usata
-    bound: float = 1.0  # garanzia: time_s <= bound * ottimo
+    expanded: int  # nodes expanded (for ARA*: cumulative over all rounds)
+    eps: float = 1.0  # heuristic inflation used
+    bound: float = 1.0  # guarantee: time_s <= bound * optimum
 
 
 def _hav(lat1, lon1, lat2, lon2):
@@ -26,7 +26,7 @@ def _hav(lat1, lon1, lat2, lon2):
 
 
 def straight_speed(G):
-    """Massima velocità 'in linea d'aria' (m/s) su un arco: rende l'euristica ammissibile e consistente per costruzione."""
+    """Highest straight-line speed (m/s) over any edge; it makes the heuristic admissible and consistent by construction."""
     if "_straight_speed" not in G.graph:
         best = 0.0
         for u, v, d in G.edges(data=True):
@@ -38,7 +38,7 @@ def straight_speed(G):
 
 
 def time_heuristic(G, goal):
-    """Tempo minimo possibile verso `goal`: distanza in linea d'aria alla massima velocità."""
+    """Lower bound on the time to `goal`: straight-line distance at the highest straight-line speed."""
     speed, g = straight_speed(G), G.nodes[goal]
     return lambda n: _hav(G.nodes[n]["y"], G.nodes[n]["x"], g["y"], g["x"]) / speed
 
@@ -49,7 +49,7 @@ def _succ(G, u):
 
 
 def _walk(parent, src, dst):
-    """Stati e mosse dal sorgente a `dst` seguendo i genitori."""
+    """States and moves from the source to `dst`, following the parents."""
     states, tags = [dst], []
     while states[-1] != src:
         prev, tag = parent[states[-1]]
@@ -60,7 +60,7 @@ def _walk(parent, src, dst):
 
 @dataclass
 class Found:
-    """Esito della ricerca su un grafo implicito: `succ(stato)` produce (successore, costo, etichetta)."""
+    """Outcome of a search on an implicit graph: `succ(state)` yields (successor, cost, tag)."""
 
     states: list
     tags: list
@@ -71,9 +71,9 @@ class Found:
 
 
 def search(succ, src, dst, h, weight=1.0, prune=None):
-    """A* / Weighted A* su un grafo implicito. Con h=0 è Dijkstra. L'euristica deve essere consistente.
+    """A* / Weighted A* on an implicit graph. With h=0 it is Dijkstra. The heuristic must be consistent.
 
-    `prune(stato, g)` può scartare uno stato appena estratto (es. dominato da uno già chiuso); deve registrarlo se lo tiene.
+    `prune(state, g)` may drop a freshly popped state (e.g. dominated by a closed one); it must record the state if it keeps it.
     """
     g, parent, closed, expanded = {src: 0.0}, {}, set(), 0
     heap = [(weight * h(src), 0.0, src)]
@@ -96,15 +96,15 @@ def search(succ, src, dst, h, weight=1.0, prune=None):
 
 
 def ara(succ, src, dst, h, eps=3.0, decrease=0.5):
-    """ARA* (Likhachev et al.): soluzione subito con `eps`, poi la migliora riusando il lavoro fatto.
+    """ARA* (Likhachev et al.): a first answer fast with `eps`, then improved while reusing the work done.
 
-    Produce un Found per ogni giro, con la garanzia `bound` (<= eps) sulla distanza dall'ottimo.
+    Yields one Found per round, with the guarantee `bound` (<= eps) on the distance from the optimum.
     """
     g, parent = {src: 0.0}, {}
     heap = [(eps * h(src), 0.0, src)]
     closed, incons, expanded = set(), set(), 0
     while True:
-        # ImprovePath: espande finché il goal non è meglio di ogni chiave aperta
+        # ImprovePath: expand until the goal is no worse than every open key
         while heap:
             key, gu, u = heap[0]
             if u in closed or gu > g[u]:
@@ -119,7 +119,7 @@ def ara(succ, src, dst, h, eps=3.0, decrease=0.5):
                 if gu + c < g.get(v, INF):
                     g[v], parent[v] = gu + c, (u, tag)
                     if v in closed:
-                        incons.add(v)  # già espanso con un g peggiore: si riapre al giro dopo
+                        incons.add(v)  # already expanded with a worse g: reopened next round
                     else:
                         heapq.heappush(heap, (g[v] + eps * h(v), g[v], v))
         if dst not in g:
@@ -138,7 +138,7 @@ def ara(succ, src, dst, h, eps=3.0, decrease=0.5):
 
 
 def _distances(G, src, reverse=False):
-    """Tempi minimi da `src` a tutti i nodi (o verso `src` se reverse)."""
+    """Minimum times from `src` to every node (or towards `src` if reverse)."""
     dist, done, heap = {src: 0.0}, set(), [(0.0, src)]
     edges = (
         (lambda u: ((p, d) for p, _, d in G.in_edges(u, data=True)))
@@ -159,9 +159,9 @@ def _distances(G, src, reverse=False):
 
 
 def alt_landmarks(G, k=8):
-    """ALT (Goldberg e Harrelson): k nodi di riferimento scelti 'il più lontano possibile' e i tempi da/verso ciascuno.
+    """ALT (Goldberg and Harrelson): k landmarks chosen as far apart as possible, with times to and from each.
 
-    shortcut: scelta farthest-first da un nodo qualunque; per grafi non connessi serve prendere la componente maggiore.
+    shortcut: farthest-first choice from an arbitrary node; for disconnected graphs start from the largest component.
     """
     first = next(iter(G.nodes))
     far = _distances(G, first)
@@ -180,7 +180,7 @@ def alt_landmarks(G, k=8):
 
 
 def alt_heuristic(G, goal, landmarks):
-    """Limite inferiore consistente del tempo verso `goal` dalla disuguaglianza triangolare sui landmark."""
+    """Consistent lower bound on the time to `goal`, from the triangle inequality on the landmarks."""
     pairs = [(d_from, d_to, d_from.get(goal), d_to.get(goal)) for _, d_from, d_to in landmarks]
 
     def h(n):
@@ -205,9 +205,9 @@ def dijkstra(G, src, dst):
 
 
 def astar(G, src, dst, weight=1.0, landmarks=None):
-    """weight=1 è A* ottimo; weight>1 è Weighted A*: più veloce, al più `weight` volte l'ottimo.
+    """weight=1 is optimal A*; weight>1 is Weighted A*: faster, at most `weight` times the optimum.
 
-    Con `landmarks` (vedi alt_landmarks) l'euristica è il massimo tra linea d'aria e ALT: ancora consistente.
+    With `landmarks` (see alt_landmarks) the heuristic is the maximum of straight line and ALT: still consistent.
     """
     h = time_heuristic(G, dst)
     if landmarks:

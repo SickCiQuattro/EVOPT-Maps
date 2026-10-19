@@ -6,7 +6,7 @@ from evopt.graph import haversine_m
 
 
 def grid(n, seed=1, speeds=(30, 50, 90)):
-    """Griglia n×n di strade bidirezionali a velocità casuali; length = distanza reale tra i nodi."""
+    """n×n grid of two-way roads at random speeds; length = real distance between nodes."""
     rnd = random.Random(seed)
     G = nx.MultiDiGraph()
     for i in range(n):
