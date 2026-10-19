@@ -1,6 +1,6 @@
 import pytest
 
-from evopt.vehicle import VEHICLES
+from evopt.vehicle import VEHICLES, Vehicle
 
 
 def test_consumption_is_plausible_at_90_kph():
@@ -37,3 +37,29 @@ def test_no_taper_by_default():
     from evopt.vehicle import Vehicle
 
     assert Vehicle(50, 1500, 0.6, 100).charge_power_kw(0.99, 100) == 100
+
+
+def test_climbing_costs_potential_energy_over_drivetrain_efficiency():
+    car = Vehicle(capacity_kwh=50, mass_kg=1500, cda=0.6, max_charge_kw=100)
+    flat = car.edge_energy_kwh(5000, 90, 200)
+    up = car.edge_energy_kwh(5000, 90, 200, rise_m=100)
+    assert up - flat == pytest.approx(1500 * 9.81 * 100 / 3.6e6 / 0.85, rel=1e-6)  # circa 0,48 kWh
+
+
+def test_descending_recovers_part_of_the_energy_but_never_goes_negative():
+    car = Vehicle(capacity_kwh=50, mass_kg=1500, cda=0.6, max_charge_kw=100)
+    flat = car.edge_energy_kwh(5000, 90, 200)
+    down = car.edge_energy_kwh(5000, 90, 200, rise_m=-20)
+    assert 0 < down < flat
+    # shortcut: in discesa la trazione non ricarica la batteria; restano solo i servizi di bordo
+    assert car.edge_energy_kwh(5000, 90, 200, rise_m=-500) == pytest.approx(car.aux_kw(20) * 200 / 3600)
+    assert flat - down == pytest.approx(1500 * 9.81 * 20 / 3.6e6 * car.regen_eff, rel=1e-6)
+
+
+def test_a_round_trip_over_a_hill_costs_more_than_the_flat_equivalent():
+    car = Vehicle(capacity_kwh=50, mass_kg=1500, cda=0.6, max_charge_kw=100)
+    flat = car.edge_energy_kwh(5000, 90, 200)
+    assert (
+        car.edge_energy_kwh(5000, 90, 200, rise_m=60) + car.edge_energy_kwh(5000, 90, 200, rise_m=-60)
+        > 2 * flat
+    )

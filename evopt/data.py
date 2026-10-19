@@ -7,6 +7,7 @@ import numpy as np
 import osmnx as ox
 
 from evopt.cache import CACHE_DIR, cached, slug
+from evopt.elevation import add_node_elevations
 from evopt.graph import haversine_m, load_graph
 from evopt.stations import apply_stations, fetch_ocm, fetch_osm, load_stations, merge, save_stations
 
@@ -25,10 +26,11 @@ def load_network(place, cache_dir=CACHE_DIR, progress=None, data_dir=DATA_DIR):
     G = cached(
         cache_dir / f"graph-{key}.graphml",
         GRAPH_TTL_DAYS,
-        lambda: load_graph(place),
+        lambda: _with_elevation(load_graph(place), cache_dir),
         ox.load_graphml,
         ox.save_graphml,
     )
+    ensure_elevation(G, cache_dir)  # no-op se il grafo salvato ha già le quote
     progress("stations")
     # il grafo in cache non contiene stazioni: si applicano ogni volta, così scadono per conto loro
     stations = cached(
@@ -73,6 +75,7 @@ def _load_local(name, progress, data_dir, cache_dir):
         )
     progress("roads")
     G = ox.load_graphml(graph)
+    ensure_elevation(G, cache_dir)
     progress("stations")
     found = load_stations(stations) if stations.exists() else []
     if os.environ.get("OCM_API_KEY"):
@@ -111,3 +114,19 @@ def _ocm_tiles(G, step_km=25.0):
             lon += dlon
         lat += dlat
     return out
+
+
+def _with_elevation(G, cache_dir):
+    """Quote nel grafo prima che finisca in cache; se i tile non ci sono, ensure_elevation riprova al prossimo carico."""
+    try:
+        add_node_elevations(G, cache_dir)
+    except OSError:
+        pass
+    return G
+
+
+def ensure_elevation(G, cache_dir):
+    try:
+        add_node_elevations(G, cache_dir)
+    except OSError as e:
+        warnings.warn(f"Elevation data not available ({e}): roads are treated as flat", stacklevel=3)

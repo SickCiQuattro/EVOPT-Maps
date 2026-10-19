@@ -27,6 +27,11 @@ def sources(monkeypatch):
         calls["ocm"] += 1
         return [Station(45.0, 0.2, 150)]
 
+    def flat_dem(G, cache_dir, **kw):  # i test non scaricano tile: quota fissa sui nodi che ne sono privi
+        for _, d in G.nodes(data=True):
+            d.setdefault("elevation", 5.0)
+
+    monkeypatch.setattr(data, "add_node_elevations", flat_dem)
     monkeypatch.setattr(data, "load_graph", graph)
     monkeypatch.setattr(data, "fetch_osm", osm)
     monkeypatch.setattr(data, "fetch_ocm", ocm)
@@ -128,3 +133,37 @@ def test_local_extract_survives_an_open_charge_map_outage(sources, tmp_path, mon
     with pytest.warns(UserWarning, match="Open Charge Map"):
         G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
     assert chargers(G) == {6: 22.0}  # solo l'estratto, con la potenza predefinita
+
+
+def test_elevation_is_added_once_and_survives_the_graph_cache(sources, tmp_path, monkeypatch):
+    seen = []
+
+    def dem(G, cache_dir, **kw):
+        todo = [n for n, d in G.nodes(data=True) if "elevation" not in d]
+        seen.append(len(todo))
+        for n in todo:
+            G.nodes[n]["elevation"] = 100.0 + n
+
+    monkeypatch.setattr(data, "add_node_elevations", dem)
+    G = data.load_network("Test, Italy", cache_dir=tmp_path)
+    assert G.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # 12 nodi annotati, una volta sola
+    again = data.load_network(
+        "Test, Italy", cache_dir=tmp_path
+    )  # dalla cache: le quote sono già nel grafo salvato
+    assert again.nodes[3]["elevation"] == 103.0 and sum(seen) == 12  # nessun nodo da annotare di nuovo
+
+
+def test_missing_elevation_data_does_not_stop_planning(sources, tmp_path, monkeypatch):
+    def down(G, cache_dir, **kw):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(data, "add_node_elevations", down)
+    with pytest.warns(UserWarning, match="flat"):
+        G = data.load_network("Test, Italy", cache_dir=tmp_path)
+    assert chargers(G) == {6: 50} and not any("elevation" in d for _, d in G.nodes(data=True))
+
+
+def test_local_extract_gets_elevation_too(sources, tmp_path):
+    local_corridor(tmp_path)
+    G = data.load_network("local:corridor", cache_dir=tmp_path / "cache", data_dir=tmp_path)
+    assert all(d["elevation"] == 5.0 for _, d in G.nodes(data=True))
