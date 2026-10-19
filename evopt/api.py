@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from evopt.cache import CACHE_DIR
 from evopt.data import load_network
 from evopt.graph import nearest_nodes, path_coords
 from evopt.planner import ALGORITHM_INFO, ALGORITHMS, Planner
@@ -205,8 +206,14 @@ def _planner(G, req):
     if key not in PLANNERS:
         if len(PLANNERS) >= MAX_PLANNERS:
             del PLANNERS[next(iter(PLANNERS))]
-        PLANNERS[key] = Planner(G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S)
+        planner = Planner(G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S)
+        planner.load_table(_table_path(planner))  # tratti già calcolati in sessioni precedenti
+        PLANNERS[key] = planner
     return PLANNERS[key]
+
+
+def _table_path(planner):
+    return CACHE_DIR / f"legs-{planner.fingerprint()}.pkl"
 
 
 def _compare(planner, start, goal, req):
@@ -263,6 +270,9 @@ def _plan(job, req):
             planner = _planner(G, req)
             route = planner.plan(start, goal, req.start_soc, req.min_soc, algorithm=req.algorithm)
             comparison = _compare(planner, start, goal, req) if req.compare else None
+            if planner.table_dirty:
+                CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                planner.save_table(_table_path(planner))
     except NoRouteError as e:
         raise JobError(
             "no_route",
