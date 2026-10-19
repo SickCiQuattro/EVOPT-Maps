@@ -9,7 +9,7 @@ from pathlib import Path
 import osmnx as ox
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from osmnx._errors import InsufficientResponseError
+from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evopt.data import load_network
@@ -122,7 +122,7 @@ def _run(job, req):
         job.status = "done"
     except JobError as e:
         job.status, job.error = "error", {"code": e.code, "message": e.message}
-    except OSError:  # rete assente o servizio mappe non raggiungibile
+    except (OSError, ResponseStatusCodeError):  # rete assente o Overpass saturo/irraggiungibile
         log.exception("map data failed")
         job.status, job.error = (
             "error",
@@ -151,8 +151,14 @@ def _locate(query):
 
 def _plan(job, req):
     points = {"start": (req.start, _locate(req.start)), "goal": (req.goal, _locate(req.goal))}
-    with _network_lock:
-        G = load_network(req.area, progress=lambda stage: setattr(job, "stage", stage))
+    try:
+        with _network_lock:
+            G = load_network(req.area, progress=lambda stage: setattr(job, "stage", stage))
+    except InsufficientResponseError as e:
+        raise JobError(
+            "not_found",
+            f"Could not find the area \u201c{req.area}\u201d. Try a city name such as \u201cPavia, Italy\u201d.",
+        ) from e
     snapped = dict(zip(points, nearest_nodes(G, [p for _, p in points.values()])))
     for which, (query, _) in points.items():
         if snapped[which][1] > MAX_SNAP_M:

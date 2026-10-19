@@ -2,6 +2,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 
 from evopt import api
 from evopt.router import NoRouteError
@@ -115,3 +116,20 @@ def test_map_service_failure_is_reported_not_raised(client, monkeypatch):
 
 def test_unknown_job_is_404(client):
     assert client.get("/api/jobs/nope").status_code == 404
+
+
+def test_overpass_status_errors_are_map_unavailable(client, monkeypatch):
+    def at_capacity(place, progress=None):
+        raise ResponseStatusCodeError("502 Bad Gateway")
+
+    monkeypatch.setattr(api, "load_network", at_capacity)
+    assert run(client)["error"]["code"] == "map_unavailable"
+
+
+def test_unknown_area_names_the_area(client, monkeypatch):
+    def nothing(place, progress=None):
+        raise InsufficientResponseError("no geocode")
+
+    monkeypatch.setattr(api, "load_network", nothing)
+    job = run(client, area="Atlantis")
+    assert job["error"]["code"] == "not_found" and "Atlantis" in job["error"]["message"]
