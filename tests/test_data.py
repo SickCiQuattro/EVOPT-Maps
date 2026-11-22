@@ -90,6 +90,13 @@ def test_missing_local_extract_explains_how_to_make_it(sources, tmp_path):
         data.load_network("local:nothing", data_dir=tmp_path)
 
 
+@pytest.mark.parametrize("name", ["../secret", "sub/dir", "..", "a.b", "/etc/x"])
+def test_local_extract_name_cannot_leave_the_data_folder(sources, tmp_path, name):
+    (tmp_path.parent / "secret.graphml").write_text("<graphml/>")
+    with pytest.raises(FileNotFoundError, match="letters, digits"):
+        data.load_network(f"local:{name}", data_dir=tmp_path)
+
+
 def local_corridor(tmp_path):
     G = line(12)
     G.graph["crs"] = "epsg:4326"

@@ -1,5 +1,6 @@
 import math
 import os
+import re
 import warnings
 from pathlib import Path
 
@@ -68,6 +69,8 @@ def _circle(G):
 
 def _load_local(name, progress, data_dir, cache_dir):
     """Local extract made by `benchmarks.extract`; with OCM_API_KEY it is completed with Open Charge Map."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):  # a name, never a path: it must not leave data_dir
+        raise FileNotFoundError(f"no local extract {name!r}: use letters, digits, - and _ only")
     graph, stations = data_dir / f"{name}.graphml", data_dir / f"{name}-stations.json"
     if not graph.exists():
         raise FileNotFoundError(
