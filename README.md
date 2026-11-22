@@ -5,7 +5,7 @@ Plan the fastest route for an electric car, with charging stops only where the b
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 
-![EVOPT Maps planning Milano to Torino: the route as a blue line with its two charging stops](example/web.png)
+![EVOPT Maps planning Milano to Torino: the route in green with its two charging stops, over a full-screen map](example/web.png)
 
 EVOPT Maps loads real roads, real chargers and terrain, estimates how much energy each road segment costs for a chosen vehicle and temperature, and searches for the trip that arrives fastest. The route is shown on a map and as a trip line in which every charging stop prints its minutes, its energy and the battery before and after. Eight search algorithms solve the same problem and can be compared on your own trip.
 
@@ -39,7 +39,7 @@ Measured on a real 145 km trip with 859 chargers (details in [docs/RESULTS.md](d
 - Physical energy model for five vehicles: rolling resistance, air drag, a cold penalty per kilometre, urban stop-and-go, climbs and descents from terrain data. Four vehicles are calibrated on public figures.
 - Charging that slows down above 80% on fast chargers, and a fixed plug-in time per stop.
 - Optimal planning over battery state, with Dijkstra, A\*, A\* with exact potentials, Weighted A\*, ARA\*, a naive driver and an exact reference.
-- Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page, in a light and a dark theme (system setting, with a toggle).
+- Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page, in a light and a dark theme (system setting, with a toggle); the map fills the screen and the planner floats over it.
 - Expiring disk cache for roads and stations, and a saved table of the legs between chargers.
 
 ## Getting started

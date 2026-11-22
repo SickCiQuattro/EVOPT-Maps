@@ -258,6 +258,8 @@ function diagram(res, v) {
     ...(s.label ? [h("strong", {}, s.label), h("br")] : []),
     "Arrive ", strong(pct(s.soc_before)), " · charge ", strong(dur(s.minutes)), " to ", strong(pct(s.soc_after)),
     h("br"), `+${kwh(s.kwh)}\u00a0kWh at up to ${+s.power_kw.toFixed(1)}\u00a0kW`,
+    h("span", { class: "gauge", role: "img", "aria-label": `Battery from ${pct(s.soc_before)} to ${pct(s.soc_after)}` },
+      h("i", { style: `left:${s.soc_before * 100}%;width:${(s.soc_after - s.soc_before) * 100}%` })),
   ], k + 1)));
   const last = res.stops.length + 1;
   items.push(station("", "end", res.goal.label, res.stops.length
@@ -271,7 +273,8 @@ const icon = (cls, html = "", size = 24) => L.divIcon({ className: "", html: `<s
 function initMap() {
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   // one-finger drags on a touch screen scroll the page; the map keeps its zoom buttons and pinch
-  map = L.map("map", { zoomControl: true, dragging: !L.Browser.mobile, zoomAnimation: !still, fadeAnimation: !still, markerZoomAnimation: !still }).setView([45.2, 9.1], 8);
+  map = L.map("map", { zoomControl: false, dragging: !L.Browser.mobile, zoomAnimation: !still, fadeAnimation: !still, markerZoomAnimation: !still }).setView([45.2, 9.1], 8);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
   }).addTo(map);
@@ -283,13 +286,14 @@ function drawMap(res) {
   const casing = L.polyline(line, { className: "route-casing", weight: 11, opacity: 1, interactive: false });
   const routeLine = L.polyline(line, { className: "route-line", weight: 6, opacity: 1, lineJoin: "round", interactive: false });
   const pts = [[line[0], icon("end"), 0], ...res.stops.map((s, k) => [[s.lat, s.lon], icon("stop", k + 1, 32), k + 1]), [line[line.length - 1], icon("end"), res.stops.length + 1]];
-  const markers = pts.map(([ll, ic, i]) => L.marker(ll, { icon: ic, keyboard: false }).on("click", () => activate(i, true)));
+  const markers = pts.map(([ll, ic, i]) => L.marker(ll, { icon: ic, keyboard: false, zIndexOffset: 1000 }).on("click", () => activate(i, true)));
   layers.route = L.layerGroup([casing, routeLine, ...markers]).addTo(map);
   layers.stops = markers;
   layers.stations = L.layerGroup(res.stations.map(([la, lo, kw]) => L.marker([la, lo], { icon: icon("station", "", 12), keyboard: false }).bindTooltip(`${Math.round(kw)} kW`)));
   $("station-count").textContent = `(${res.stations.length})`;
   toggleStations();
-  map.fitBounds(routeLine.getBounds(), { padding: [64, 64], animate: false });
+  const wide = matchMedia("(min-width: 901px)").matches; // the rail floats over the left 432 px of the map
+  map.fitBounds(routeLine.getBounds(), { paddingTopLeft: [wide ? 480 : 32, 80], paddingBottomRight: [64, 64], animate: false });
   state.activeIndex = -1;
 }
 function clearRoute() {
@@ -306,7 +310,10 @@ function activate(i, pan) {
   state.activeIndex = i;
   document.querySelectorAll(".st").forEach((b) => b.classList.toggle("is-active", +b.dataset.i === i));
   layers.stops.forEach((m, k) => m.getElement()?.firstChild.classList.toggle("is-active", k === i));
-  if (pan && layers.stops[i]) map.setView(layers.stops[i].getLatLng(), Math.max(map.getZoom(), 13), { animate: false });
+  if (pan && layers.stops[i]) {
+    map.setView(layers.stops[i].getLatLng(), Math.max(map.getZoom(), 13), { animate: false });
+    if (matchMedia("(min-width: 901px)").matches) map.panBy([-216, 0], { animate: false });
+  }
 }
 
 /* ---------- algorithms ---------- */

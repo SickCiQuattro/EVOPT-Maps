@@ -28,7 +28,7 @@ Local web app: FastAPI serves a JSON API and the static frontend. Road graph and
 - Open Charge Map key is read from `OCM_API_KEY`; without it only OSM stations are used.
 
 ## Brand Commitments
-Name: EVOPT Maps. Authors: Camossi Filippo, Cioli Daniele. No logo or brand palette exists.
+Name: EVOPT Maps. Authors: Camossi Filippo, Cioli Daniele. The mark is a bolt in a rounded green square; no other brand assets.
 
 ## Evidence on Hand
 Screenshots of the old GUI and map in `example/`, and the course presentation PDF. No testimonials, benchmarks or usage numbers exist and none may be invented.
