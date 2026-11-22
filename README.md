@@ -2,7 +2,7 @@
 
 Plan the fastest route for an electric car, with charging stops only where the battery needs them.
 
-[![CI](https://github.com/SickCiQuattro/EVOPT-Maps/actions/workflows/ci.yml/badge.svg)](https://github.com/SickCiQuattro/EVOPT-Maps/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 
 ![EVOPT Maps planning Milano to Torino: progress, the route and its charging stops](example/demo.gif)

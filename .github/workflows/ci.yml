@@ -1,9 +1,8 @@
 name: CI
 
+# Manual only (gh workflow run CI): GitHub Actions minutes are used up for the month.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:

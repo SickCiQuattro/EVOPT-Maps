@@ -1,8 +1,9 @@
 [project]
 name = "evopt-maps"
 version = "0.1.0"
-description = "Routing per veicoli elettrici con soste di ricarica su mappe OpenStreetMap"
+description = "Fastest-route planning for electric vehicles with charging stops, on OpenStreetMap data"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "osmnx>=2.1",
