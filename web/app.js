@@ -56,6 +56,7 @@ function paintSlider(s) {
   const p = ((el.value - el.min) / (el.max - el.min)) * 100;
   el.style.setProperty("--p", `${p}%`);
   $(s.out).textContent = s.fmt(el.value);
+  el.setAttribute("aria-valuetext", s.fmt(el.value).replace("-", "−"));
 }
 function onSlider(e) {
   const start = $("start-soc"), min = $("min-soc");
@@ -127,6 +128,7 @@ function renderSteps(stage) {
     const tag = { done: "done", active: "working", wait: "waiting" }[st];
     return h("li", { "data-state": st }, h("span", { class: "dot", "aria-hidden": "true" }), s.label, h("span", { class: "tag" }, tag));
   }));
+  $("live").textContent = STEPS[at].label;
   $("status-note").textContent = stage === "roads"
     ? "First time for this area: downloading its roads can take a few minutes. It is then saved for 30 days."
     : stage === "stations" || stage === "power" ? "Finding charging stations in OpenStreetMap and Open Charge Map." : "";
@@ -167,7 +169,7 @@ async function poll(id, jobId) {
     if (job.status === "running") { renderSteps(job.stage); continue; }
     if (job.status !== "done") return fail(id, job.error);
     done(id, job.result);
-    if (job.compare) await pollCompare(id, jobId, job);
+    if (job.compare) await pollCompare(id, jobId, job).catch(() => id === state.job && showCompare("error"));
     return;
   }
 }
@@ -267,7 +269,9 @@ function diagram(res, v) {
 /* ---------- map ---------- */
 const icon = (cls, html = "", size = 24) => L.divIcon({ className: "", html: `<span class="mk ${cls}">${html}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 function initMap() {
-  map = L.map("map", { zoomControl: true }).setView([45.2, 9.1], 8);
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // one-finger drags on a touch screen scroll the page; the map keeps its zoom buttons and pinch
+  map = L.map("map", { zoomControl: true, dragging: !L.Browser.mobile, zoomAnimation: !still, fadeAnimation: !still, markerZoomAnimation: !still }).setView([45.2, 9.1], 8);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
   }).addTo(map);
@@ -276,16 +280,16 @@ function drawMap(res) {
   for (const l of [layers.route, layers.stations]) l && l.remove();
   layers.stops = [];
   const line = res.route;
-  const casing = L.polyline(line, { color: "#fff", weight: 11, opacity: 1, interactive: false });
-  const red = L.polyline(line, { color: "#e30613", weight: 6, opacity: 1, lineJoin: "round", interactive: false });
+  const casing = L.polyline(line, { className: "route-casing", weight: 11, opacity: 1, interactive: false });
+  const routeLine = L.polyline(line, { className: "route-line", weight: 6, opacity: 1, lineJoin: "round", interactive: false });
   const pts = [[line[0], icon("end"), 0], ...res.stops.map((s, k) => [[s.lat, s.lon], icon("stop", k + 1, 32), k + 1]), [line[line.length - 1], icon("end"), res.stops.length + 1]];
   const markers = pts.map(([ll, ic, i]) => L.marker(ll, { icon: ic, keyboard: false }).on("click", () => activate(i, true)));
-  layers.route = L.layerGroup([casing, red, ...markers]).addTo(map);
+  layers.route = L.layerGroup([casing, routeLine, ...markers]).addTo(map);
   layers.stops = markers;
   layers.stations = L.layerGroup(res.stations.map(([la, lo, kw]) => L.marker([la, lo], { icon: icon("station", "", 12), keyboard: false }).bindTooltip(`${Math.round(kw)} kW`)));
   $("station-count").textContent = `(${res.stations.length})`;
   toggleStations();
-  map.fitBounds(red.getBounds(), { padding: [64, 64], animate: false });
+  map.fitBounds(routeLine.getBounds(), { padding: [64, 64], animate: false });
   state.activeIndex = -1;
 }
 function clearRoute() {
@@ -378,6 +382,13 @@ async function init() {
   $("algorithm").replaceChildren(...state.algorithms.map((a) => h("option", { value: a.id }, a.name)));
   $("algo-list").replaceChildren(...state.algorithms.flatMap((a) => [h("dt", {}, a.name), h("dd", {}, a.summary)]));
   $("vehicle").replaceChildren(...state.vehicles.map((v) => h("option", { value: v.name }, v.name)));
+  if (!state.vehicles.length || !state.algorithms.length) {
+    $("error-title").textContent = ERROR_TITLES.unreachable;
+    $("error-text").textContent = "The vehicle and algorithm lists could not be loaded. Is the server running?";
+    $("retry").hidden = true;
+    $("submit").disabled = true;
+    show("error");
+  }
   const saved = { ...EXAMPLE, ...load() };
   if (!saved.vehicle) saved.vehicle = (state.vehicles.find((v) => v.name.includes("Renault Twizy")) ?? state.vehicles[0] ?? {}).name;
   fill(saved);
@@ -390,6 +401,11 @@ async function init() {
   $("cancel").addEventListener("click", cancel);
   $("retry").addEventListener("click", () => $("plan-form").requestSubmit());
   $("show-stations").addEventListener("change", toggleStations);
+  $("theme").addEventListener("click", () => {
+    const dark = (document.documentElement.dataset.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("evopt-theme", document.documentElement.dataset.theme); } catch { /* storage unavailable */ }
+  });
   window.addEventListener("hashchange", () => route(false));
   route(true);
 }

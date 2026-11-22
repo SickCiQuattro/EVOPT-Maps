@@ -5,7 +5,7 @@ Plan the fastest route for an electric car, with charging stops only where the b
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 
-![EVOPT Maps planning Milano to Torino: progress, the route and its charging stops](example/demo.gif)
+![EVOPT Maps planning Milano to Torino: the route as a blue line with its two charging stops](example/web.png)
 
 EVOPT Maps loads real roads, real chargers and terrain, estimates how much energy each road segment costs for a chosen vehicle and temperature, and searches for the trip that arrives fastest. The route is shown on a map and as a trip line in which every charging stop prints its minutes, its energy and the battery before and after. Eight search algorithms solve the same problem and can be compared on your own trip.
 
@@ -13,12 +13,10 @@ It started as a university project for the Intelligent Systems course and was re
 
 <table>
   <tr>
-    <td width="33%"><img src="example/web.png" alt="Milano to Torino with two charging stops"></td>
-    <td width="33%"><img src="example/mountain.png" alt="Torino to Courmayeur, a 1,400 m climb"></td>
-    <td width="33%"><img src="example/algorithms.png" alt="Comparison of the eight algorithms on one trip"></td>
+    <td width="50%"><img src="example/mountain.png" alt="Torino to Courmayeur, a 1,400 m climb"></td>
+    <td width="50%"><img src="example/algorithms.png" alt="Comparison of the eight algorithms on one trip"></td>
   </tr>
   <tr>
-    <td align="center">Milano to Torino, 145 km</td>
     <td align="center">Torino to Courmayeur, +1,429 m</td>
     <td align="center">Algorithm comparison</td>
   </tr>
@@ -41,7 +39,7 @@ Measured on a real 145 km trip with 859 chargers (details in [docs/RESULTS.md](d
 - Physical energy model for five vehicles: rolling resistance, air drag, a cold penalty per kilometre, urban stop-and-go, climbs and descents from terrain data. Four vehicles are calibrated on public figures.
 - Charging that slows down above 80% on fast chargers, and a fixed plug-in time per stop.
 - Optimal planning over battery state, with Dijkstra, A\*, A\* with exact potentials, Weighted A\*, ARA\*, a naive driver and an exact reference.
-- Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page.
+- Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page, in a light and a dark theme (system setting, with a toggle).
 - Expiring disk cache for roads and stations, and a saved table of the legs between chargers.
 
 ## Getting started

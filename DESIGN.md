@@ -2,13 +2,28 @@
 name: EVOPT Maps
 description: Noorda Line, a metro-signage design system for an electric-vehicle route planner where the trip is a line and each charging stop is a station.
 colors:
-  paper: "#ffffff"
-  ink: "#111111"
-  line-red: "#e30613"
-  line-red-pressed: "#b8000f"
-  map-ground: "#efefec"
-  hairline: "#cfcfcf"
-  muted-ink: "#555555"
+  canvas-light: "#f5f6f3"
+  surface-light: "#ffffff"
+  ink: "#16191a"
+  ink-2-light: "#5b625f"
+  rule-light: "#d9dcd7"
+  rule-strong-light: "#868d88"
+  line-blue-light: "#0057b8"
+  line-blue-pressed-light: "#00468f"
+  on-line-blue-light: "#ffffff"
+  map-ground-light: "#f4f4f4"
+  casing-light: "#ffffff"
+  canvas-dark: "#0f1110"
+  surface-dark: "#1c1f1d"
+  chalk: "#e6e9e4"
+  ink-2-dark: "#a7aea8"
+  rule-dark: "#2e322f"
+  rule-strong-dark: "#6c746e"
+  line-blue-dark: "#6aa6ff"
+  line-blue-pressed-dark: "#94bfff"
+  on-line-blue-dark: "#0f1110"
+  map-ground-dark: "#1f1f1f"
+  casing-dark: "#0f1110"
 typography:
   display:
     fontFamily: "Helvetica Neue, Helvetica, Arimo, Arial, sans-serif"
@@ -44,20 +59,20 @@ spacing:
   panel: 24px
 components:
   button-primary:
-    backgroundColor: "{colors.line-red}"
-    textColor: "{colors.paper}"
+    backgroundColor: "{colors.line-blue-light}"
+    textColor: "{colors.on-line-blue-light}"
     rounded: "{rounded.none}"
     height: 48px
   button-primary-hover:
-    backgroundColor: "{colors.line-red-pressed}"
-    textColor: "{colors.paper}"
+    backgroundColor: "{colors.line-blue-pressed-light}"
+    textColor: "{colors.on-line-blue-light}"
   button-secondary:
-    backgroundColor: "{colors.paper}"
+    backgroundColor: "{colors.surface-light}"
     textColor: "{colors.ink}"
     rounded: "{rounded.none}"
     height: 40px
   input:
-    backgroundColor: "{colors.paper}"
+    backgroundColor: "{colors.surface-light}"
     textColor: "{colors.ink}"
     rounded: "{rounded.none}"
     height: 40px
@@ -69,14 +84,14 @@ components:
 
 **Creative North Star: "The Noorda Line"**
 
-A route is a metro line and a charging stop is a station. The interface borrows the discipline of 1960s Milan metro signage and the transit-diagram tradition: white enamel ground, black rules, one saturated line colour, one grotesque. It is built for people judging a project in a couple of minutes, so everything that matters is printed: minutes, kilowatt-hours and battery before and after at each stop.
+A route is a metro line and a charging stop is a station. The interface borrows the discipline of 1960s Milan metro signage and the transit-diagram tradition: enamel ground, dark rules, one saturated line colour (Milan M4 blue), one grotesque. It is built for people judging a project in a couple of minutes, so everything that matters is printed: minutes, kilowatt-hours and battery before and after at each stop.
 
 The world supplies type, palette, density and one signature move. Navigation and controls stay standard: tabs, text inputs, a select, range sliders, buttons.
 
 **Key Characteristics:**
-- White paper, black ink, one red that means route, primary action or the active thing.
+- Warm-grey paper and ink (the telai.camossi neutrals), light and dark, one blue that means route, primary action or the active thing.
 - Flat: no shadows, no gradients as decoration, zero radius except the round station rings.
-- The signature move is the trip line: a vertical red line with ringed stations, mirrored on the map.
+- The signature move is the trip line: a vertical blue line with ringed stations, mirrored on the map.
 - Every slider carries a live tabular readout.
 - State changes are instant two-frame steps of 90 ms, no easing.
 
@@ -85,19 +100,22 @@ The world supplies type, palette, density and one signature move. Navigation and
 A near-monochrome palette with a single signal colour.
 
 ### Primary
-- **Line Red** (#e30613): the route line (map and diagram), the primary action, slider fill, the current tab and any active or hovered station. Pressed or hovered primary button is **Line Red Pressed** (#b8000f).
+- **Line Blue** (#0057b8 light, #6aa6ff dark): the route line (map and diagram), the primary action, slider fill, the current tab and any active or hovered station. Pressed or hovered primary button is **Line Blue Pressed** (#00468f light, #94bfff dark).
 
 ### Neutral
-- **Paper** (#ffffff): panels, inputs, header.
-- **Ink** (#111111): text, 3px structural rules, ring outlines, input borders.
-- **Map Ground** (#efefec): behind the map tiles. Tiles are shown in grey.
-- **Hairline** (#cfcfcf): slider tracks, list dividers.
-- **Muted Ink** (#555555): helper text and secondary notes (7.5:1 on paper).
+- **Surface** (#ffffff light, #1c1f1d dark): panels, inputs, header. The page itself sits on **Canvas** (#f5f6f3, #0f1110).
+- **Ink** (#16191a light, Chalk #e6e9e4 dark): text, 3px structural rules, ring outlines, input borders.
+- **Map Ground** (#f4f4f4, #1f1f1f): behind the map tiles. Tiles stay neutral grey; dark mode inverts them with a CSS filter.
+- **Rule** (#d9dcd7, #2e322f): list dividers; **Rule Strong** (#868d88, #6c746e): unfilled slider tracks.
+- **Ink 2** (#5b625f, #a7aea8): helper text and secondary notes (5.8:1 on canvas in light, 8.4:1 in dark).
+
+### Dark theme
+Follows the system setting, with a header toggle that stores the choice. Same structure, different tokens: the accent lightens to #6aa6ff (7.7:1 on the dark canvas), text on it flips to the canvas colour, and the route casing becomes the canvas colour so the line stays separated from dark motorways (the route is 3:1 or better against the tiles only thanks to the casing).
 
 ### Named Rules
-**The One Signal Rule.** Red appears only on the route, the primary action, the slider fill, the active tab and the active station. If red is not one of those, it is wrong.
+**The One Signal Rule.** Blue appears only on the route, the primary action, the slider fill, the active tab and the active station. If blue is not one of those, it is wrong.
 
-**The No Colour Alone Rule.** State is never only a colour: errors carry a black "!" badge and a heavy bar under the field, step status carries the words done, working or waiting.
+**The No Colour Alone Rule.** State is never only a colour: errors carry an ink "!" badge and a heavy bar under the field, step status carries the words done, working or waiting.
 
 ## Typography
 
@@ -123,7 +141,7 @@ Spacing sits on an 8px grid: 16px between fields, 24px panel padding, 40px contr
 
 ## Elevation & Depth
 
-Flat. Depth comes from 3px black rules between regions and from a white casing under the red route on the map. There are no shadows.
+Flat. Depth comes from 3px black rules between regions and from a canvas-coloured casing under the blue route on the map. There are no shadows.
 
 ## Shapes
 
@@ -132,7 +150,7 @@ Rectangles with square corners. The only curve is the station ring: a circle wit
 ## Components
 
 ### Buttons
-- **Primary:** Line Red fill, white bold text, 48px high, full width, 0 radius. Hover goes to Line Red Pressed. Disabled is Hairline fill with Muted Ink text.
+- **Primary:** Line Blue fill, bold text in the on-accent colour (white in light, canvas in dark), 48px high, full width, 0 radius. Hover goes to Line Blue Pressed. Disabled is Rule fill with Ink 2 text.
 - **Secondary:** white, 2px ink border, 40px high. Hover inverts to ink.
 - **Text:** underlined ink text for low-emphasis actions (Cancel).
 
@@ -142,22 +160,22 @@ Rectangles with square corners. The only curve is the station ring: a circle wit
 - **Error:** a heavy 4px bar inside the bottom edge plus a "!" badge and message below.
 
 ### Sliders
-Track 4px with Line Red fill; thumb is a station ring (24px). The label row shows a live 1.25rem tabular readout.
+Track 4px with Line Blue fill; thumb is a station ring (24px). The label row shows a live 1.25rem tabular readout.
 
 ### Navigation
-Header tabs, bold 16px. The active tab has a 4px Line Red underline that overlaps the header rule.
+Header tabs, bold 16px. The active tab has a 4px Line Blue underline that overlaps the header rule.
 
 ### Trip line (signature)
-A vertical 8px Line Red bar with ringed stations. Start and end are 24px rings; charging stops are 32px numbered rings. Each stop prints arrival charge, minutes charging, charge after, kWh and power. Hover or focus turns the ring and its name red and highlights the same stop on the map.
+A vertical 8px Line Blue bar with ringed stations. Start and end are 24px rings; charging stops are 32px numbered rings. Each stop prints arrival charge, minutes charging, charge after, kWh and power. Hover or focus turns the ring and its name blue and highlights the same stop on the map.
 
 ### Data table
-Used for the algorithm comparison. Full width inside the 960px page column, a 3px ink rule under the header row, 1px hairlines between rows, 16px cell padding, numeric columns right-aligned with tabular figures. The best row is bold; the selected algorithm carries a Line Red "selected" word. Wrapped in a horizontal scroller on narrow screens.
+Used for the algorithm comparison. Full width inside the 960px page column, a 3px ink rule under the header row, 1px hairlines between rows, 16px cell padding, numeric columns right-aligned with tabular figures. The best row is bold; the selected algorithm carries a Line Blue "selected" word. Wrapped in a horizontal scroller on narrow screens.
 
 ### Advanced disclosure
 A native details element with a hairline above, a bold summary and a drawn chevron. It keeps the algorithm, leg-energy and comparison options out of the way until wanted.
 
 ### Vehicle roster
-Five equal cells with a 3px ink border: name block, two specs, action. The selected cell has a Line Red name block and border.
+Five equal cells with a 3px ink border: name block, two specs, action. The selected cell has a Line Blue name block and border.
 
 ## Do's and Don'ts
 
@@ -169,6 +187,6 @@ Five equal cells with a 3px ink border: name block, two specs, action. The selec
 
 ### Don't:
 - **Don't** add shadows, gradients as decoration or rounded cards.
-- **Don't** use red for anything that is not route, primary action, slider fill, active tab or active station.
+- **Don't** use blue for anything that is not route, primary action, slider fill, active tab or active station.
 - **Don't** use a modal for planning: status and errors live in the rail.
-- **Don't** colour map tiles; they stay grey so the red line leads.
+- **Don't** colour map tiles; they stay grey so the blue line leads.
