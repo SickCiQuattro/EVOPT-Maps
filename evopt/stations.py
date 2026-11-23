@@ -57,7 +57,7 @@ def power_kw(tags):
     for key, raw in tags.items():
         if key.endswith("output") and isinstance(raw, str) and (m := _NUMBER.match(raw.strip())):
             values.append(float(m.group().replace(",", ".")))
-    return max(values, default=None)
+    return max((v for v in values if v > 0), default=None)  # "0 kW" is no power at all
 
 
 def station_from_tags(lat, lon, tags):
@@ -87,7 +87,7 @@ def parse_ocm(items):
         a = item.get("AddressInfo") or {}
         if a.get("Latitude") is None or a.get("Longitude") is None:
             continue
-        kws = [c["PowerKW"] for c in item.get("Connections") or [] if c.get("PowerKW") is not None]
+        kws = [c["PowerKW"] for c in item.get("Connections") or [] if (c.get("PowerKW") or 0) > 0]
         stations.append(Station(a["Latitude"], a["Longitude"], max(kws, default=None), _text(a.get("Title"))))
     return stations
 
@@ -140,6 +140,7 @@ def apply_stations(G, stations, default_kw=22.0, max_snap_m=200):
             kw = s.kw if s.kw is not None else s.hint if s.hint is not None else default_kw
             if kw >= G.nodes[node].get("charger_kw", 0):
                 G.nodes[node]["charger_kw"] = kw
+                G.nodes[node]["charger_known"] = s.kw is not None  # False: power estimated or assumed
                 if s.label:
                     G.nodes[node]["charger_label"] = s.label
 

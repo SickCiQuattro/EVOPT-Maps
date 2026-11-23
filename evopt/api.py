@@ -1,3 +1,4 @@
+import functools
 import logging
 import threading
 import time
@@ -7,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import osmnx as ox
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -18,6 +19,7 @@ from evopt.graph import nearest_nodes, path_coords
 from evopt.planner import ALGORITHM_INFO, ALGORITHMS, Planner
 from evopt.router import NoRouteError
 from evopt.vehicle import VEHICLES
+from evopt.weather import current_temperature
 
 log = logging.getLogger("evopt")
 MAX_SNAP_M = 2000  # beyond this distance from the nearest road a point is outside the area
@@ -53,6 +55,9 @@ class PlanRequest(BaseModel):
     legs: str = "fastest"  # "pareto": slower but does not miss efficient legs
     compare: bool = False  # also run all the other algorithms and report the comparison
     elevation: bool = True  # account for climbs and descents (if the map has elevations)
+    max_speed_kph: int | None = Field(None, ge=50, le=130)  # cruise speed cap; None: the speed limit
+    min_kw: float = Field(0, ge=0, le=350)  # ignore chargers slower than this
+    known_power: bool = False  # only chargers whose power is published (not estimated)
 
     @field_validator("area", "start", "goal")
     @classmethod
@@ -98,6 +103,9 @@ class Job:
     compare_progress: tuple = (0, 0)
     comparison: list | None = None
     context: tuple | None = None  # (planner, start, goal) for the comparison
+    req: object = None
+    stop_nodes: tuple = ()  # the chargers of the planned trip, in order
+    base_min: float | None = None  # best trip time, the reference of the "if busy" alternatives
 
 
 class JobError(Exception):
@@ -133,12 +141,63 @@ def algorithms():
 @app.post("/api/plan", status_code=202)
 def plan(req: PlanRequest):
     now = time.time()
-    for key in [k for k, j in JOBS.items() if now - j.started > JOB_TTL_S]:
+    for key in [k for k, j in list(JOBS.items()) if now - j.started > JOB_TTL_S]:
         del JOBS[key]
     job_id = uuid.uuid4().hex
     JOBS[job_id] = job = Job(started=now)
     _pool.submit(_run, job, req)
     return {"job_id": job_id}
+
+
+@functools.lru_cache(maxsize=256)
+def _cached_geocode(query):
+    return geocode(query)
+
+
+@app.get("/api/temperature")
+def temperature(place: str = Query(min_length=2, max_length=200)):
+    """Current outside temperature at `place`, for the temperature slider."""
+    try:
+        lat, lon = _cached_geocode(place.strip())
+        return {"temp_c": current_temperature(lat, lon)}
+    except NotFound as e:
+        raise HTTPException(404, f"Could not find {place!r}") from e
+    except (OSError, KeyError, ValueError) as e:
+        raise HTTPException(502, "The weather service is not responding") from e
+
+
+@app.post("/api/jobs/{job_id}/busy/{k}")
+def busy(job_id: str, k: int):
+    """Trip time if charging stop `k` (1-based) is not available: the planner avoids that charger."""
+    job = JOBS.get(job_id)
+    if job is None or job.status != "done" or not job.context:
+        raise HTTPException(404, "unknown or unfinished job")
+    if not 1 <= k <= len(job.stop_nodes):
+        raise HTTPException(404, "unknown stop")
+    planner, start, goal = job.context
+    req = job.req
+    try:
+        with _plan_lock:
+            if job.base_min is None:  # optimal reference, whatever algorithm planned the trip
+                job.base_min = (
+                    planner.plan(start, goal, req.start_soc, req.min_soc, algorithm="astar_potential").time_s
+                    / 60
+                )
+            route = planner.plan(
+                start,
+                goal,
+                req.start_soc,
+                req.min_soc,
+                algorithm="astar_potential",
+                avoid=(job.stop_nodes[k - 1],),
+            )
+    except NoRouteError:
+        return {"extra_min": None}
+    return {
+        "extra_min": route.time_s / 60 - job.base_min,
+        "stops": len(route.charges),
+        "via": [planner.G.nodes[n].get("charger_label") for n, *_ in route.charges],
+    }
 
 
 @app.get("/api/jobs/{job_id}")
@@ -222,12 +281,29 @@ def _network(area, job):
 
 
 def _planner(G, req):
-    key = (req.area, req.vehicle, round(req.temp_c, 1), req.legs, req.elevation)
+    key = (
+        req.area,
+        req.vehicle,
+        round(req.temp_c, 1),
+        req.legs,
+        req.elevation,
+        req.max_speed_kph,
+        req.min_kw,
+        req.known_power,
+    )
     if key not in PLANNERS:
         if len(PLANNERS) >= MAX_PLANNERS:
             del PLANNERS[next(iter(PLANNERS))]
         planner = Planner(
-            G, VEHICLES[req.vehicle], req.temp_c, legs=req.legs, plug_in_s=PLUG_IN_S, elevation=req.elevation
+            G,
+            VEHICLES[req.vehicle],
+            req.temp_c,
+            legs=req.legs,
+            plug_in_s=PLUG_IN_S,
+            elevation=req.elevation,
+            max_speed_kph=req.max_speed_kph,
+            min_kw=req.min_kw,
+            known_power=req.known_power,
         )
         planner.load_table(_table_path(planner))  # legs computed in earlier sessions
         PLANNERS[key] = planner
@@ -300,16 +376,24 @@ def _plan(job, req):
                 f"“{query}” is more than {MAX_SNAP_M // 1000} km from any road in “{req.area}”. "
                 "Use a larger area or a closer address.",
             )
+    if req.algorithm == "exact" and len(G) > EXACT_MAX_NODES:
+        raise JobError(
+            "too_large",
+            f"The exact reference is only for small areas (up to {EXACT_MAX_NODES} road nodes; this one has {len(G)}).",
+        )
     job.stage = "planning"
     vehicle = VEHICLES[req.vehicle]
-    stations = [(d["y"], d["x"], d["charger_kw"]) for _, d in G.nodes(data=True) if "charger_kw" in d]
     start, goal = snapped["start"][0], snapped["goal"][0]
     try:
         with _plan_lock:
             planner = _planner(G, req)
+            stations = [
+                (G.nodes[n]["y"], G.nodes[n]["x"], G.nodes[n]["charger_kw"]) for n in planner.stations
+            ]
             route = planner.plan(start, goal, req.start_soc, req.min_soc, algorithm=req.algorithm)
             _save_table(planner)
-            job.context = (planner, start, goal)
+            job.context, job.req = (planner, start, goal), req
+            job.stop_nodes = tuple(n for n, *_ in route.charges)
     except NoRouteError as e:
         raise JobError(
             "no_route",
@@ -340,6 +424,7 @@ def _plan(job, req):
         "algorithm": req.algorithm,
         "stats": route.stats,
         "anytime": route.history or None,
+        "profile": [[round(km, 2), round(soc, 4)] for km, soc in route.profile] or None,
         "summary": {
             "distance_km": route.distance_m / 1000,
             "drive_min": route.time_s / 60 - charge_min,

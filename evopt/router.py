@@ -14,6 +14,7 @@ class Route:
     arrival_soc: float
     stats: dict = field(default_factory=dict)  # algorithm, states expanded, milliseconds...
     history: list = field(default_factory=list)  # ARA* rounds: eps, bound, time
+    profile: list = field(default_factory=list)  # (km, charge 0-1) after every leg and every charging stop
 
 
 def plan_route(G, start, goal, vehicle, *, temp_c=20, start_soc=1.0, min_soc=0.1, steps=100):

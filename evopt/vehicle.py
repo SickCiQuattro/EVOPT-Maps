@@ -37,7 +37,9 @@ class Vehicle:
 
     def charge_power_kw(self, soc, station_kw):
         """Charging power at charge `soc` (0-1). Constant on AC (up to 22 kW); on DC it falls above the knee."""
-        peak = min(self.max_charge_kw, station_kw)
+        peak = max(
+            1.0, min(self.max_charge_kw, station_kw)
+        )  # a 0 kW entry in the data must not stop the clock
         if peak <= 22 or soc <= self.taper_from:
             return peak
         frac = min(1.0, (soc - self.taper_from) / (1.0 - self.taper_from))

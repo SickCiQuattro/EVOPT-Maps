@@ -36,12 +36,22 @@ class Planner:
     """Plans trips on a graph for one vehicle and temperature, reusing the legs between chargers."""
 
     def __init__(
-        self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0, elevation=True
-    ):
+        self, G, vehicle, temp_c=20, steps=100, legs="fastest", dominance=True, plug_in_s=0.0, elevation=True,
+        max_speed_kph=None, min_kw=0.0, known_power=False,
+    ):  # fmt: skip
         if legs not in ("fastest", "pareto"):
             raise ValueError("legs must be 'fastest' or 'pareto'")
         self.G, self.vehicle, self.temp_c, self.steps, self.legs_mode = G, vehicle, temp_c, steps, legs
-        self.stations = frozenset(n for n, d in G.nodes(data=True) if "charger_kw" in d)
+        self.max_speed_kph = max_speed_kph  # cruise speed cap, None: the speed limit
+        self.min_kw, self.known_power = min_kw, known_power  # charger preferences
+        self.stations = frozenset(
+            n
+            for n, d in G.nodes(data=True)
+            if "charger_kw" in d
+            and d["charger_kw"] >= min_kw
+            and (not known_power or d.get("charger_known", False))
+        )
+        self._avoid = frozenset()  # chargers not to charge at in the current plan (see `plan`)
         self.unit = vehicle.capacity_kwh / steps
         self.use_elevation = (
             elevation  # False: ignore elevations (for comparison, or unreliable terrain data)
@@ -60,10 +70,12 @@ class Planner:
         self._table = {}  # charger -> {charger: [Leg]}; valid while graph, vehicle and temperature stay the same
 
     # ---------- energy ----------
-    def _energy(self, d, rise_m=0.0):
-        return self.vehicle.edge_energy_kwh(
-            d["length"], d["speed_kph"], d["travel_time"], self.temp_c, rise_m
-        )
+    def _arc(self, d, rise_m=0.0):
+        """(seconds, metres, kWh) of an edge at the cruise speed: the limit, or the cap if it is lower."""
+        speed, secs = d["speed_kph"], d["travel_time"]
+        if self.max_speed_kph and speed > self.max_speed_kph:
+            secs, speed = secs * speed / self.max_speed_kph, self.max_speed_kph
+        return secs, d["length"], self.vehicle.edge_energy_kwh(d["length"], speed, secs, self.temp_c, rise_m)
 
     def _rise(self, u, v, d):
         """Elevation change of edge u->v from the node elevations, capped at a plausible grade.
@@ -103,7 +115,7 @@ class Planner:
         if self._adj is None:  # once per Planner: an edge's energy does not change between searches
             out, inn = {}, {}
             for u0, v0, d in self.G.edges(data=True):
-                arc = (d["travel_time"], d["length"], self._energy(d, self._rise(u0, v0, d)))
+                arc = self._arc(d, self._rise(u0, v0, d))
                 out.setdefault(u0, []).append((v0, *arc))
                 inn.setdefault(v0, []).append((u0, *arc))
             self._adj = (out, inn)
@@ -203,6 +215,7 @@ class Planner:
             self.vehicle,
             self.temp_c,
             self.legs_mode,
+            self.max_speed_kph,
             # elevations change the energy of every edge: without them (or switched off) the legs differ
             round(sum(d.get("elevation", 0.0) for _, d in G.nodes(data=True)))
             if self.use_elevation
@@ -237,7 +250,12 @@ class Planner:
         if algorithm not in ALGORITHMS:
             raise ValueError(f"unknown algorithm {algorithm!r}; choose one of {ALGORITHMS}")
         t0 = time.perf_counter()
-        route = getattr(self, f"_plan_{algorithm}")(start, goal, start_soc, min_soc, **opts)
+        # `avoid`: chargers the car must not stop at (busy, broken); only the reduced-graph algorithms honour it
+        self._avoid = frozenset(opts.pop("avoid", ()))
+        try:
+            route = getattr(self, f"_plan_{algorithm}")(start, goal, start_soc, min_soc, **opts)
+        finally:
+            self._avoid = frozenset()
         route.stats.update(
             algorithm=algorithm, total_ms=(time.perf_counter() - t0) * 1000, leg_searches=self.leg_searches
         )
@@ -278,7 +296,7 @@ class Planner:
     def _state_graph(self, start, goal, start_soc, min_soc, need_potential=False):
         t0 = time.perf_counter()
         edges, level0, min_level = self._reduced(start, goal, start_soc, min_soc)
-        steps, stations = self.steps, self.stations
+        steps, stations = self.steps, self.stations - self._avoid
 
         def succ(state):
             node, level, charging = state
@@ -412,14 +430,25 @@ class Planner:
 
     def _build(self, found):
         path, dist, charges = [], 0.0, []
-        for ((node, level, _), tag), (nxt, _, _) in zip(zip(found.states, found.tags), found.states[1:]):
+        profile, charging = [(0.0, found.states[0][1] / self.steps)], False
+        for ((node, level, _), tag), (nxt, nxt_level, _) in zip(
+            zip(found.states, found.tags), found.states[1:]
+        ):
             if tag is None:  # edge to the terminal state
                 continue
             if tag[0] == "drive":
                 leg_path = tag[1].path or self._leg_path(node, nxt, tag[1])
                 path += leg_path if not path else leg_path[1:]
                 dist += tag[1].meters
+                profile.append((dist / 1000, nxt_level / self.steps))
+                charging = False
             else:
+                point = (dist / 1000, nxt_level / self.steps)  # a whole stop is one vertical jump
+                if charging:
+                    profile[-1] = point
+                else:
+                    profile.append(point)
+                charging = True
                 if not charges or charges[-1][0] != node:
                     charges.append([node, 0.0, 0.0, level / self.steps, level / self.steps])
                 stop = charges[-1]
@@ -427,7 +456,9 @@ class Planner:
                 stop[2] += tag[1]
                 stop[4] = (level + 1) / self.steps
         arrival = found.states[-2][1] / self.steps
-        return Route(path, found.cost, dist, [tuple(c) for c in charges], arrival)
+        route = Route(path, found.cost, dist, [tuple(c) for c in charges], arrival)
+        route.profile = profile
+        return route
 
     def _plan_dijkstra(self, start, goal, start_soc, min_soc):
         return self._run(start, goal, start_soc, min_soc, heuristic="none")
