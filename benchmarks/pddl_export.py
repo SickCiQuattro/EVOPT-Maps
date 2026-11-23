@@ -13,9 +13,10 @@ from itertools import pairwise
 
 import networkx as nx
 
+from evopt.graph import haversine_m
 from evopt.vehicle import Vehicle
 
-SCALE = 10  # PDDL costs are integers: tenths of a second
+SCALE = 1000  # PDDL costs are integers: milliseconds (0.1 s rounds the same way at every charge step: 1.4 s off on 46 steps)
 
 
 @dataclass
@@ -43,19 +44,48 @@ class Instance:
         return cls(**{**d, "legs": [tuple(leg) for leg in d["legs"]]})
 
 
-def export(planner, start, goal, soc=0.9, min_soc=0.1, keep=None):
-    """Instance of the reduced graph from `start` to `goal`; `keep(node)` may drop chargers (default: all)."""
+def corridor_filter(G, start, goal, km, min_kw=0.0):
+    """`keep` for `export`: chargers of at least `min_kw` within `km` of the straight line from start to goal."""
+    (y0, x0), (y1, x1) = (G.nodes[start]["y"], G.nodes[start]["x"]), (G.nodes[goal]["y"], G.nodes[goal]["x"])
+    cos = math.cos(math.radians((y0 + y1) / 2))
+    ax, ay = (x1 - x0) * cos, y1 - y0
+    length2 = ax * ax + ay * ay
+
+    def keep(n):
+        d = G.nodes[n]
+        px, py = (d["x"] - x0) * cos, d["y"] - y0
+        t = max(0.0, min(1.0, (px * ax + py * ay) / length2))
+        return d["charger_kw"] >= min_kw and math.hypot(px - t * ax, py - t * ay) * 111.19 <= km
+
+    return keep
+
+
+def export(planner, start, goal, soc=0.9, min_soc=0.1, keep=None, forward_km=None):
+    """Instance of the reduced graph from `start` to `goal`.
+
+    `keep(node)` may drop chargers (default: all); `forward_km` drops the legs between chargers that end more than
+    that far (as the crow flies) farther from the goal than they began, which removes the detours backwards.
+    """
     assert start not in planner.stations and goal not in planner.stations, (
         "start and goal must not be chargers"
     )
     edges, level0, min_level = planner._reduced(start, goal, soc, min_soc)
     stations = {s for s in planner.stations if keep is None or keep(s)}
+    G = planner.G
+
+    def farther(u, v):
+        return haversine_m(
+            G.nodes[v]["y"], G.nodes[v]["x"], G.nodes[goal]["y"], G.nodes[goal]["x"]
+        ) - haversine_m(G.nodes[u]["y"], G.nodes[u]["x"], G.nodes[goal]["y"], G.nodes[goal]["x"])
+
     name = {start: "s", goal: "g"}
     legs, seen, todo = [], {start}, [start]
     while todo:
         u = todo.pop()
         for b, leg, need in edges(u):
             if b != goal and b not in stations or need > planner.steps - min_level:
+                continue
+            if forward_km is not None and u != start and farther(u, b) > forward_km * 1000:
                 continue
             name.setdefault(b, f"c{len(name) - 2}")
             legs.append((name[u], name[b], leg.time_s, leg.kwh, need))
@@ -106,18 +136,18 @@ def reference(inst, scale=SCALE):
 
 # ---------- synthetic corridor ----------
 CAR = Vehicle(capacity_kwh=50.0, mass_kg=1500, cda=0.6, max_charge_kw=150, taper_from=0.8, taper_to=0.3)
-LENGTH_KM, SPEED_KPH = 600, 110
+SPEED_KPH = 110
 
 
-def corridor(n, seed=None):
-    """(graph, start, goal): a 600 km road at 110 km/h with `n` chargers (50, 100 or 150 kW) at random places.
+def corridor(n, seed=None, length_km=600):
+    """(graph, start, goal): a road of `length_km` (600 by default) at 110 km/h with `n` chargers (50, 100 or 150 kW) at random places.
 
     The road is a chain of nodes, so the leg between two chargers is the sum of the pieces between them.
     """
     rnd = random.Random(n if seed is None else seed)
-    xs = sorted(rnd.uniform(10, LENGTH_KM - 10) for _ in range(n))
+    xs = sorted(rnd.uniform(10, length_km - 10) for _ in range(n))
     G = nx.MultiDiGraph()
-    places = [(0.0, "start")] + [(x, k) for k, x in enumerate(xs)] + [(float(LENGTH_KM), "goal")]
+    places = [(0.0, "start")] + [(x, k) for k, x in enumerate(xs)] + [(float(length_km), "goal")]
     for (a, _), (b, _) in pairwise(places):
         length = (b - a) * 1000 * 1.1
         for u, v in ((a, b), (b, a)):
@@ -128,4 +158,4 @@ def corridor(n, seed=None):
         )  # on a meridian: the straight line is shorter than the road
     for x in xs:
         G.nodes[x]["charger_kw"] = rnd.choice((50.0, 100.0, 150.0))
-    return G, 0.0, float(LENGTH_KM)
+    return G, 0.0, float(length_km)

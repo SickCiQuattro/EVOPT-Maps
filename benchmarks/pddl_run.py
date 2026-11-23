@@ -17,7 +17,7 @@ from functools import partial
 from pathlib import Path
 
 from benchmarks import pddl_models as models
-from benchmarks.pddl_export import CAR, SCALE, corridor, export, reference
+from benchmarks.pddl_export import CAR, SCALE, corridor, corridor_filter, export, reference
 from evopt.planner import Planner
 
 
@@ -115,21 +115,63 @@ def enhsp(inst, timeout, model="hybrid", config="sat-hmrp", unit_steps=10, step=
             "expanded": int(expanded.group(1)) if expanded else None}  # fmt: skip
 
 
-def instance(kind, n):
+REAL = {  # extract -> (origin, target) as lat,lon
+    "milano-torino": ((45.4642, 9.1900), (45.0620, 7.6780)),
+    "torino-courmayeur": ((45.0703, 7.6869), (45.7840, 6.9760)),
+}
+
+
+def instance(
+    kind,
+    n,
+    length_km=600,
+    corridor_km=None,
+    min_kw=0.0,
+    forward_km=None,
+    vehicle="MINI Electric",
+    temp_c=0.0,
+    steps=100,
+):
+    """(planner, instance, (start, goal)); `n` is the number of chargers of a synthetic corridor, ignored on real roads."""
     if kind == "corridor":
-        G, s, g = corridor(n)
-        planner = Planner(G, CAR, 20, steps=100, plug_in_s=180)
+        G, s, g = corridor(n, length_km=length_km)
+        planner = Planner(G, CAR, 20, steps=steps, plug_in_s=180)
         return planner, export(planner, s, g, 0.9, 0.1), (s, g)
-    raise SystemExit(f"unknown instance kind {kind}")
+    from evopt.api import _table_path
+    from evopt.data import load_network
+    from evopt.graph import nearest_node
+    from evopt.vehicle import VEHICLES
+
+    G = load_network(f"local:{kind}")
+    (a, b) = REAL[kind]
+    s, g = nearest_node(G, *a), nearest_node(G, *b)
+    planner = Planner(G, VEHICLES[vehicle], temp_c, steps=steps, plug_in_s=180)
+    planner.load_table(_table_path(planner))
+    keep = corridor_filter(G, s, g, corridor_km, min_kw) if corridor_km else None
+    return planner, export(planner, s, g, 0.9, 0.1, keep, forward_km), (s, g)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("kind", choices=["corridor"])
+    ap.add_argument("kind", choices=["corridor", *REAL])
     ap.add_argument("sizes", type=int, nargs="+")
     ap.add_argument(
         "--planners", nargs="+", default=["fd", "symk"], choices=["fd", "symk", "numeric", "hybrid"]
     )
+    ap.add_argument(
+        "--corridor-km", type=float, default=None, help="real roads: keep chargers this close to the line"
+    )
+    ap.add_argument("--min-kw", type=float, default=0.0, help="real roads: drop chargers below this power")
+    ap.add_argument(
+        "--forward-km",
+        type=float,
+        default=None,
+        help="real roads: drop legs that move this far from the goal",
+    )
+    ap.add_argument("--steps", type=int, default=100, help="charge levels")
+    ap.add_argument("--length-km", type=float, default=600, help="synthetic corridor: road length")
+    ap.add_argument("--vehicle", default="MINI Electric")
+    ap.add_argument("--temp", type=float, default=0.0)
     ap.add_argument("--timeout", type=float, default=300)
     ap.add_argument(
         "--config", default=None, help="ENHSP configuration (numeric: opt-hrmax, hybrid: sat-hmrp)"
@@ -139,11 +181,22 @@ def main():
         "--step", type=float, default=None, help="PDDL+ model: time step in seconds (ENHSP default 1)"
     )
     args = ap.parse_args()
-    print("| chargers | legs | Dijkstra (s) | planner | cost (s) | wall (s) | peak MB | note |")
-    print("|---|---|---|---|---|---|---|---|")
+    print("| chargers | legs | Dijkstra (s) | exact (s) | planner | cost (s) | wall (s) | peak MB | note |")
+    print("|---|---|---|---|---|---|---|---|---|")
     for n in args.sizes:
-        _, inst, _ = instance(args.kind, n)
+        planner, inst, (s, g) = instance(
+            args.kind,
+            n,
+            args.length_km,
+            args.corridor_km,
+            args.min_kw,
+            args.forward_km,
+            args.vehicle,
+            args.temp,
+            args.steps,
+        )
         ref = reference(inst)
+        exact = planner.plan(s, g, algorithm="exact", start_soc=0.9, min_soc=0.1).time_s  # continuous charge
         runs = {
             "fd": partial(fast_downward, inst, args.timeout),
             "symk": partial(fast_downward, inst, args.timeout, True),
@@ -164,7 +217,7 @@ def main():
             cost = "-" if r["cost"] is None else f"{r['cost']:.1f}"
             mb = "-" if r["peak_mb"] is None else f"{r['peak_mb']:.0f}"
             print(
-                f"| {n} | {len(inst.legs)} | {ref:.1f} | {name} | {cost} | {r['seconds']:.1f} | {mb} | {note} |",
+                f"| {len(inst.peaks)} | {len(inst.legs)} | {ref:.1f} | {exact:.1f} | {name} | {cost} | {r['seconds']:.1f} | {mb} | {note} |",
                 flush=True,
             )
 

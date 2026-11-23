@@ -19,7 +19,7 @@ def test_reference_on_the_exported_instance_equals_the_planners_dijkstra(n):
 
     route = planner.plan(s, g, algorithm="dijkstra", start_soc=0.9, min_soc=0.1)
 
-    assert reference(inst) == pytest.approx(route.time_s, abs=1.0)  # costs are rounded to 0.1 s per action
+    assert reference(inst) == pytest.approx(route.time_s, abs=0.1)  # costs are rounded to 1 ms per action
 
 
 def test_instance_round_trips_through_json():
