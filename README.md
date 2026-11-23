@@ -57,7 +57,7 @@ uv run uvicorn evopt.api:app
 
 Open <http://127.0.0.1:8000>. The form is pre-filled with a small example that needs a charging stop: Voghera to Lodi in a Renault Twizy, on a bundled road extract (`data/demo.graphml`, 6.5 MB), so it plans without downloading maps. Place names are still looked up on Nominatim, so it needs a connection.
 
-With Docker (not tested by me yet): `docker build -t evopt-maps . && docker run -p 8000:8000 -v evopt-cache:/app/cache evopt-maps`.
+A `Dockerfile` is included but has not been built yet. Intended use: `docker build -t evopt-maps . && docker run -p 8000:8000 -v evopt-cache:/app/cache evopt-maps`.
 
 A trip is a link: the form values are in the address, so `/?from=Voghera&to=Lodi&area=local:demo&car=Renault+Twizy&temp=10&soc=15&min=10` plans that trip as soon as it opens. The "Copy link" button in the result builds one.
 
@@ -144,7 +144,7 @@ Select the extract in the web app with the area name `local:milano-torino`. The 
 | `evopt/cache.py`, `evopt/data.py` | Expiring disk cache and one-call network loading |
 | `evopt/api.py` | FastAPI app: planning jobs, comparison, vehicles, static frontend |
 | `web/` | Static frontend (HTML, CSS, JS, Leaflet), no build step |
-| `benchmarks/` | `compare` (algorithms), `calibrate` (vehicles), `extract` (local OSM extracts) |
+| `benchmarks/` | `compare` (algorithms), `calibrate` (vehicles), `extract` (local OSM extracts), `pddl_*` (PDDL models and runner) |
 | `tests/` | pytest suite |
 | `docs/` | Measured results, energy model and calibration |
 | `PRODUCT.md`, `DESIGN.md` | Product context and design system of the web interface |
