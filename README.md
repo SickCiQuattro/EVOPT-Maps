@@ -159,6 +159,8 @@ uv run ruff check .  # lint
 uv run ruff format . # format
 ```
 
+[docs/PDDL.md](docs/PDDL.md) records a comparison with generic planners: the same problem written in classical PDDL, numeric PDDL and PDDL+ and run with Fast Downward, SymK, ENHSP and CP-SAT (`uv run --python 3.13 --group pddl python -m benchmarks.pddl_run`). They agree with the search on the instances they finish, but they are far slower and stop at about 30 chargers, so the dedicated search stays the planner.
+
 The tests replace only the network boundaries (Overpass, Open Charge Map, geocoding, terrain tiles), so routing, cache and API logic run for real.
 
 ## Limitations

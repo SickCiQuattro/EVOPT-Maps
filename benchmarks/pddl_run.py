@@ -19,6 +19,7 @@ from pathlib import Path
 from benchmarks import pddl_models as models
 from benchmarks.pddl_export import CAR, SCALE, corridor, corridor_filter, export, reference
 from evopt.planner import Planner
+from evopt.router import NoRouteError
 
 
 def _package(name):
@@ -104,15 +105,62 @@ def enhsp(inst, timeout, model="hybrid", config="sat-hmrp", unit_steps=10, step=
         )
     found = re.search(r"Metric \(Search\):\s*([\d.]+)|Plan-Length:", out or "")
     cost = re.search(r"Metric \(Search\):\s*([\d.]+)", out or "")
-    end = re.findall(r"^([\d.]+):\s*\(", out or "", re.MULTILINE)
+    waits = re.findall(r"waiting-+ \[([\d.]+)\]", out or "")
     expanded = re.search(r"Expanded Nodes:\s*(\d+)", out or "")
     value = float(cost.group(1)) if cost else None
-    if model == "hybrid" and end:
-        value = float(
-            end[-1]
-        )  # a PDDL+ plan ends at the last action; the time to the goal is added by the metric
+    if (
+        model == "hybrid"
+    ):  # the plan ends when the last process ends: the arrival at the goal ("Metric" is search cost)
+        value = float(waits[-1]) if waits else None
     return {"cost": value if found else None, "seconds": secs, "peak_mb": mb, "timeout": out is None,
             "expanded": int(expanded.group(1)) if expanded else None}  # fmt: skip
+
+
+def cp_sat(inst, timeout):
+    """OR baseline: the level-expanded graph as a shortest-path flow, solved with CP-SAT (OR-Tools)."""
+    from ortools.sat.python import cp_model
+
+    t0 = time.perf_counter()
+    out = {}
+    for u, v, t, _, need in inst.legs:
+        out.setdefault(u, []).append((v, round(t * SCALE), need))
+    plug = round(inst.plug_s * SCALE)
+    step = {c: [round(x * SCALE) for x in ls] for c, ls in inst.charge_s.items()}
+    src = ("s", inst.level0, False)
+    arcs, seen, todo = [], {src}, [src]  # (from state, to state, cost); the goal is one terminal state
+    while todo:
+        state = todo.pop()
+        node, level, charging = state
+        nxt = []
+        if node in step and level < inst.steps:
+            nxt.append(((node, level + 1, True), step[node][level] + (0 if charging else plug)))
+        nxt += [
+            (("g", 0, False) if v == "g" else (v, level - need, False), t)
+            for v, t, need in out.get(node, ())
+            if level - need >= inst.min_level
+        ]
+        for nstate, cost in nxt:
+            arcs.append((state, nstate, cost))
+            if nstate not in seen:
+                seen.add(nstate)
+                if nstate[0] != "g":
+                    todo.append(nstate)
+    model = cp_model.CpModel()
+    x = [model.new_bool_var("") for _ in arcs]
+    balance = {}
+    for (a, b, _), var in zip(arcs, x):
+        balance.setdefault(a, []).append(var)
+        balance.setdefault(b, []).append(-var)
+    for state, terms in balance.items():
+        model.add(sum(terms) == (1 if state == src else -1 if state[0] == "g" else 0))
+    model.minimize(sum(cost * var for (_, _, cost), var in zip(arcs, x)))
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = timeout
+    status = solver.solve(model)
+    solved = status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    return {"cost": solver.objective_value / SCALE if solved else None, "seconds": time.perf_counter() - t0,
+            "peak_mb": None, "timeout": not solved, "optimal": status == cp_model.OPTIMAL,
+            "arcs": len(arcs)}  # fmt: skip
 
 
 REAL = {  # extract -> (origin, target) as lat,lon
@@ -156,7 +204,7 @@ def main():
     ap.add_argument("kind", choices=["corridor", *REAL])
     ap.add_argument("sizes", type=int, nargs="+")
     ap.add_argument(
-        "--planners", nargs="+", default=["fd", "symk"], choices=["fd", "symk", "numeric", "hybrid"]
+        "--planners", nargs="+", default=["fd", "symk"], choices=["fd", "symk", "numeric", "hybrid", "cpsat"]
     )
     ap.add_argument(
         "--corridor-km", type=float, default=None, help="real roads: keep chargers this close to the line"
@@ -196,8 +244,15 @@ def main():
             args.steps,
         )
         ref = reference(inst)
-        exact = planner.plan(s, g, algorithm="exact", start_soc=0.9, min_soc=0.1).time_s  # continuous charge
+        try:
+            exact = planner.plan(
+                s, g, algorithm="exact", start_soc=0.9, min_soc=0.1
+            ).time_s  # continuous charge
+        except NoRouteError:
+            print(f"| {len(inst.peaks)} | {len(inst.legs)} | infeasible | | | | | | |")
+            continue
         runs = {
+            "cpsat": partial(cp_sat, inst, args.timeout),
             "fd": partial(fast_downward, inst, args.timeout),
             "symk": partial(fast_downward, inst, args.timeout, True),
             "numeric": partial(
@@ -213,6 +268,7 @@ def main():
                 else "no plan"
                 if r["cost"] is None
                 else f"{r['cost'] - ref:+.1f} s vs Dijkstra"
+                + ("" if r.get("optimal", True) else " (not proven optimal)")
             )
             cost = "-" if r["cost"] is None else f"{r['cost']:.1f}"
             mb = "-" if r["peak_mb"] is None else f"{r['peak_mb']:.0f}"

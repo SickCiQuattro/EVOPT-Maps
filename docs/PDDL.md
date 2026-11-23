@@ -326,6 +326,46 @@ The real corridor is much larger: the cached legs table for the 859-charger Mila
 
 **What to say in the README if it loses** (draft):
 
-> We also wrote the problem in classical PDDL, numeric PDDL and PDDL+ (charging as a continuous process with the 80% taper) and ran Fast Downward, SymK and ENHSP on the same reduced graph. Every plan they returned matched the dedicated search, but they were N to M times slower and did not solve instances above X chargers within 5 minutes. The models, generator and results are in `docs/PDDL.md`. The dedicated search stays the planner; PDDL+ is useful for prototyping richer constraints.
+> We also wrote the problem in classical PDDL, numeric PDDL and PDDL+ (charging as a continuous process with the 80% taper) and ran Fast Downward, SymK and ENHSP on the same reduced graph. Every plan they returned matched the dedicated search within discretisation, but they were thousands of times slower (30 chargers: 14 s to 265 s against 21 ms) and did not solve 100 chargers within 5 minutes. The models, generator and results are in `docs/PDDL.md`. The dedicated search stays the planner; PDDL+ is useful for prototyping richer constraints.
 
-Fill N, M and X from the measured table; do not round in your favour.
+The numbers are now measured: see section 9.
+
+## 9. Results
+
+Run on 2026-11-23, one Mac (8 cores), one run per cell, so timings are indicative. Reproduce with `uv run --python 3.13 --group pddl python -m benchmarks.pddl_run <instance> <sizes> --planners ...` (the `pddl` group needs Python 3.13: OR-Tools has no wheel for 3.15). Every instance is exported from a `Planner` by `benchmarks/pddl_export.py`, and costs are integer milliseconds. The reference is a Dijkstra over `(charger, level, charging)` on the exported legs. It equals `Planner.plan(algorithm="dijkstra")` to 0.1 s (`tests/test_pddl.py`). Objective: total seconds including 180 s per stop, arrival at 10%. Corridors: 600 km at 110 km/h, 50 kWh car, chargers of 50, 100 or 150 kW, 100 levels.
+
+### Phase 0 and (a): classical model, exact
+
+| Chargers | Legs | Dijkstra (this repo) | Fast Downward A\*/LM-cut | SymK | CP-SAT (flow on levels) |
+| --- | --- | --- | --- | --- | --- |
+| 10 | 80 | 5 ms | 3.8 s, optimal | 1.7 s, optimal | 0.3 s, optimal |
+| 30 | 592 | 21 ms | 265.1 s, optimal | 14.3 s, optimal | 4.5 s, optimal |
+| 100 | 7,104 | 178 ms | timeout 300 s | timeout 300 s | 125.7 s, not proven optimal, 63,147 s against 23,588.8 s |
+
+Every plan that finished has the same cost as Dijkstra to the millisecond. The A\* variant with exact potentials (`astar_potential`) takes 3.5, 8.6 and 65.8 ms on the same three instances.
+
+**Cost resolution matters.** The 30-charger run took 54.6 s with costs in whole seconds (section 6) and 265.1 s with costs in milliseconds, for the same problem and the same optimum, because LM-cut gets many more distinct cost values to work with. Costs in tenths of a second looked fine on corridors but were 1.4 s off on the real Milano–Torino plan: 0.1 s rounds the same way at each of its 46 charge steps. A classical encoding therefore trades plan accuracy against search time.
+
+**Real roads (Milano–Torino, MINI Electric, 0 °C, 90% to 10%).** The unpruned reduced graph has 506 chargers and 178,080 legs, and the dedicated search plans it in 1.4 s (Dijkstra) or 0.18 s (A\* with potentials). Fed to PDDL it would be about 16 million `drive-ok` facts at 100 levels (178,080 legs times about 90 feasible levels, an estimate). Pruning to chargers within 5 km of the straight line, and legs that do not move more than 5 km away from the goal, leaves 149 chargers and 10,415 legs, but the best plan on that graph takes 9,658 s against 5,988 s unpruned: pruning removes the fast route. On that pruned graph SymK solves 20 levels in 129.5 s (9,705.6 s, equal to Dijkstra) and nothing finishes at 100 levels in 300 s. Fast Downward times out at both.
+
+### Phase (b): numeric PDDL, ENHSP
+
+`opt-hrmax`, 10 chargers: 2.3 s, plan 24,300 s with charging in 5 kWh blocks and 24,085 s in 2.5 kWh blocks, against 23,900.3 s from Dijkstra and 23,872.2 s from the continuous reference, so the gap is the block size (+1.7% and +0.8%). At 30 chargers it times out at 300 s with either block size. `opt-blind` ran out of memory (3.9 GB) on the 10-charger instance. The linear taper surrogate was not isolated from the block effect.
+
+### Phase (c): PDDL+, ENHSP
+
+Corridors of 300 km, 1 s to 60 s time steps:
+
+| Chargers | `sat-hmrp` (not optimal) | `opt-blind` | analytic optimum |
+| --- | --- | --- | --- |
+| 3 | 11,342 s at 60 s step, 11,309 s at 1 s step, 0.3 s | 11,341 s in 63.7 s, 1.7 GB | 11,306.9 s (4 chargers, computed by hand) |
+| 4 | 11,341 s, 11,308 s at 1 s step, 0.3 s | timeout 180 s | |
+| 5 to 10 | +200 to +387 s above Dijkstra (1.8% to 3.4%), under 2 s | timeout (5, 6) | |
+
+On the instances where it is optimal, PDDL+ is within one step per event of the hand-computed optimum (11,308 s against 11,306.9 s at a 1 s step). The satisficing configuration is fast but returns plans 1.8% to 3.4% too slow from 5 chargers on, and `opt-hrmax` timed out at 180 s even with 3 chargers. The 30-charger corridor was never solved in PDDL+, which is the no-go condition set in section 8.
+
+The Planner's `exact` reference is 9 s above the analytic optimum on the 3- and 4-charger instances (11,316 s), because it charges in whole levels, so it is a tighter reference than Dijkstra but not a continuous optimum.
+
+### Conclusion
+
+On every instance size where PDDL planners finish, they agree with Dijkstra to the millisecond (classical) or within the discretisation (numeric, PDDL+). Their time grows by orders of magnitude, they stop at about 30 chargers (classical) or 3 to 4 chargers (optimal PDDL+) and on real roads they cannot take the unpruned graph that the dedicated search handles in 1.4 s. By the criteria in section 8 this is a no-go: the dedicated search stays the planner, and the PDDL models are kept as a documented prototype for richer constraints.
