@@ -28,6 +28,7 @@ Measured on a real 145 km trip with 859 chargers (details in [docs/RESULTS.md](d
 
 - **Calibrated on public figures.** The first energy model overstated range at 110 km/h by 18 to 37%. After calibrating on EV Database figures it matches them, and it predicts a held-out point (urban consumption in the cold) within 4%. The calibration turned a one-stop plan into a two-stop one ([docs/MODEL.md](docs/MODEL.md)).
 - **A\* with exact potentials expands 67% fewer states than Dijkstra** on the real trip, and 8 times fewer with ALT landmarks at road level. The planner gets the same optimal trip.
+- **Slowing down can be faster.** On Milano to Torino in a Twingo at 0 °C (90% to 10%), capping the speed at 110 km/h instead of the 130 km/h motorway limit drops one charging stop and the trip goes from 147.5 to 131.3 minutes; 90 km/h gives 131.8. The speed comparison in the app shows this for your own trip.
 - **A naive "charge to 80% at the nearest charger" driver needs 37% more time** than the planned trip.
 - **A 1,000 m climb costs 18% more energy**, and elevation changes the plan: the same trip goes from one stop to two.
 - **Planning a 145 km trip takes about 4.5 s** once the legs between chargers are cached, and about 9 s after a restart.
@@ -41,7 +42,7 @@ Measured on a real 145 km trip with 859 chargers (details in [docs/RESULTS.md](d
 - Optimal planning over battery state, with Dijkstra, A\*, A\* with exact potentials, Weighted A\*, ARA\*, a naive driver and an exact reference.
 - Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page, in a light and a dark theme (system setting, with a toggle); the map fills the screen and the planner floats over it.
 - Expiring disk cache for roads and stations, and a saved table of the legs between chargers.
-- Trip tools: a battery-along-the-route chart, a cruise-speed cap with a comparison ("110 km/h: one stop fewer, 4 minutes slower"), charger preferences (minimum power, published power only), "if this charger is busy" alternatives for each stop, the temperature now from Open-Meteo, a shareable link that plans the trip when opened, and GPX and GeoJSON export.
+- Trip tools: a battery-along-the-route chart, a cruise-speed cap with a comparison of stops and minutes at lower speeds, charger preferences (minimum power, published power only), "if this charger is busy" alternatives for each stop, the temperature now from Open-Meteo, a shareable link that plans the trip when opened, and GPX and GeoJSON export.
 
 ## Getting started
 
@@ -167,7 +168,7 @@ The tests replace only the network boundaries (Overpass, Open Charge Map, geocod
 
 - No traffic or road works, and no live charger availability or access rules: a car may be sent to a charger its network does not allow.
 - Elevation is approximate (30 m terrain data, smoothed), and descents are prudent: they save energy but never charge the battery.
-- Vehicle consumption is calibrated on EV Database estimates for four of five vehicles; the Twizy is approximate, hot-weather consumption is not calibrated, and plans run at the speed limit.
+- Vehicle consumption is calibrated on EV Database estimates for four of five vehicles; the Twizy is approximate, hot-weather consumption is not calibrated, and plans run at the speed limit unless a cruise-speed cap is set.
 - Charging uses a simple taper curve; real curves depend on temperature and battery state.
 - Charger power is often missing in OpenStreetMap (217 of 1,400 on the corridor): it is estimated, completed from Open Charge Map, or assumed to be 22 kW.
 - With the default `fastest` legs, the energy of a leg is that of the fastest road, not the most efficient one (`pareto` removes this).
