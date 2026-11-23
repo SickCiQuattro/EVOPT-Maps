@@ -8,5 +8,7 @@ path.html
 .ruff_cache/
 .pytest_cache/
 .env
-data/
+data/*
+!data/demo.graphml
+!data/demo-stations.json
 .impeccable/

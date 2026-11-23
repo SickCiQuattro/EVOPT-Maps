@@ -120,3 +120,10 @@ def test_open_meteo_answer_is_read(monkeypatch):
     monkeypatch.setattr(weather.urllib.request, "urlopen", urlopen)
     assert weather.current_temperature(45.07, 7.69) == 12
     assert "latitude=45.0700" in seen["url"] and "temperature_2m" in seen["url"]
+
+
+def test_demo_is_offered_only_when_the_extract_exists(client, monkeypatch, tmp_path):  # noqa: F811
+    monkeypatch.setattr(api, "DATA_DIR", tmp_path)
+    assert client.get("/api/demo").json() is None
+    (tmp_path / "demo.graphml").write_text("<graphml/>")
+    assert client.get("/api/demo").json()["area"] == "local:demo"

@@ -14,7 +14,7 @@ from osmnx._errors import InsufficientResponseError, ResponseStatusCodeError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evopt.cache import CACHE_DIR
-from evopt.data import load_network
+from evopt.data import DATA_DIR, load_network
 from evopt.graph import nearest_nodes, path_coords
 from evopt.planner import ALGORITHM_INFO, ALGORITHMS, Planner
 from evopt.router import NoRouteError
@@ -28,6 +28,15 @@ NETWORK_TTL_S = 3600  # in memory; on disk the graph and stations last longer (e
 MAX_NETWORKS = 4
 MAX_PLANNERS = 16
 PLUG_IN_S = 180  # plugging in and starting the charge: nobody stops for one minute
+DEMO = {
+    "area": "local:demo",
+    "start": "Pavia",
+    "goal": "Piacenza",
+    "vehicle": "Renault Twizy",
+    "temp": 10,
+    "startSoc": 15,
+    "minSoc": 10,
+}
 EXACT_MAX_NODES = 2500  # the exact reference is slow: above this size the comparison skips it
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -123,6 +132,12 @@ PLANNERS: dict[
 ] = {}  # (area, vehicle, temperature, legs, elevation) -> Planner with its legs table
 
 app = FastAPI(title="EVOPT Maps")
+
+
+@app.get("/api/demo")
+def demo():
+    """The ready-made trip on the bundled extract (data/demo.graphml), or null if the extract is missing."""
+    return DEMO if (DATA_DIR / "demo.graphml").exists() else None
 
 
 @app.get("/api/vehicles")
