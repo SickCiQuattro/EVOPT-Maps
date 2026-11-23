@@ -9,7 +9,7 @@ Plan the fastest route for an electric car, with charging stops only where the b
 
 EVOPT Maps loads real roads, real chargers and terrain, estimates how much energy each road segment costs for a chosen vehicle and temperature, and searches for the trip that arrives fastest. The route is shown on a map and as a trip line in which every charging stop prints its minutes, its energy and the battery before and after. Eight search algorithms solve the same problem and can be compared on your own trip.
 
-It started as a university project for the Intelligent Systems course and was rewritten as a small, tested web app. The original A\* and desktop GUI version lives in the [`legacy`](https://github.com/SickCiQuattro/EVOPT-Maps/tree/legacy) branch.
+It started as a university project for the Intelligent Systems course, built with Daniele Cioli. The version you see here is a rewrite by Filippo Camossi: a new energy model, planner, web app, tests and benchmarks. The original A\* and desktop GUI version, with both authors, is kept in the [`legacy`](https://github.com/SickCiQuattro/EVOPT-Maps/tree/legacy) branch.
 
 <table>
   <tr>
@@ -181,4 +181,4 @@ See [docs/MODEL.md](docs/MODEL.md) for how far each approximation can be trusted
 
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Charger data from [Open Charge Map](https://openchargemap.org). Vehicle reference figures from [EV Database](https://ev-database.org). Elevation from terrain tiles on [AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Mapzen, SRTM and other sources). Maps drawn with [Leaflet](https://leafletjs.com).
 
-By Filippo Camossi and Daniele Cioli. The original course presentation is in [`example/`](example/).
+Rewritten by Filippo Camossi. The original course project was done with Daniele Cioli; its presentation is in [`example/`](example/).
