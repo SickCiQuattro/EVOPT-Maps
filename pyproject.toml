@@ -24,6 +24,12 @@ dev = [
 extract = [
     "osmium>=4.3.2",
 ]
+pddl = [
+    "ortools>=9.15.6755",
+    "up-enhsp>=0.1.1",
+    "up-fast-downward>=1.0.0",
+    "up-symk>=1.6.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
