@@ -30,8 +30,8 @@ MAX_PLANNERS = 16
 PLUG_IN_S = 180  # plugging in and starting the charge: nobody stops for one minute
 DEMO = {
     "area": "local:demo",
-    "start": "Pavia",
-    "goal": "Piacenza",
+    "start": "Voghera",
+    "goal": "Lodi",
     "vehicle": "Renault Twizy",
     "temp": 10,
     "startSoc": 15,
@@ -362,8 +362,6 @@ def _run_compare(job, req):
     except Exception:
         log.exception("comparison failed")
         job.compare = "error"
-    finally:
-        job.context = None  # release the Planner
 
 
 def _save_table(planner):

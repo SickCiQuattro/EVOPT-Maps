@@ -41,6 +41,7 @@ Measured on a real 145 km trip with 859 chargers (details in [docs/RESULTS.md](d
 - Optimal planning over battery state, with Dijkstra, A\*, A\* with exact potentials, Weighted A\*, ARA\*, a naive driver and an exact reference.
 - Web interface with live progress, clear errors, a vehicle roster and an algorithm comparison page, in a light and a dark theme (system setting, with a toggle); the map fills the screen and the planner floats over it.
 - Expiring disk cache for roads and stations, and a saved table of the legs between chargers.
+- Trip tools: a battery-along-the-route chart, a cruise-speed cap with a comparison ("110 km/h: one stop fewer, 4 minutes slower"), charger preferences (minimum power, published power only), "if this charger is busy" alternatives for each stop, the temperature now from Open-Meteo, a shareable link that plans the trip when opened, and GPX and GeoJSON export.
 
 ## Getting started
 
@@ -53,7 +54,11 @@ uv sync
 uv run uvicorn evopt.api:app
 ```
 
-Open <http://127.0.0.1:8000>. The form is pre-filled with a small example that needs a charging stop.
+Open <http://127.0.0.1:8000>. The form is pre-filled with a small example that needs a charging stop: Voghera to Lodi in a Renault Twizy, on a bundled road extract (`data/demo.graphml`, 6.5 MB), so it plans without downloading maps. Place names are still looked up on Nominatim, so it needs a connection.
+
+With Docker (not tested by me yet): `docker build -t evopt-maps . && docker run -p 8000:8000 -v evopt-cache:/app/cache evopt-maps`.
+
+A trip is a link: the form values are in the address, so `/?from=Voghera&to=Lodi&area=local:demo&car=Renault+Twizy&temp=10&soc=15&min=10` plans that trip as soon as it opens. The "Copy link" button in the result builds one.
 
 > [!NOTE]
 > The first plan for a new area downloads its roads and can take a few minutes; after that it is instant. The public Overpass server may refuse large areas, so use a city rather than a region, or a local extract (see [Realistic test](#realistic-test)).

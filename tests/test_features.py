@@ -1,5 +1,6 @@
 import io
 import json
+import time
 
 import pytest
 
@@ -127,3 +128,12 @@ def test_demo_is_offered_only_when_the_extract_exists(client, monkeypatch, tmp_p
     assert client.get("/api/demo").json() is None
     (tmp_path / "demo.graphml").write_text("<graphml/>")
     assert client.get("/api/demo").json()["area"] == "local:demo"
+
+
+def test_busy_still_works_after_the_algorithm_comparison(two_stations):
+    job = run(two_stations, compare=True)
+    for _ in range(200):  # wait for the comparison: it used to release the planner the alternatives need
+        if two_stations.get(f"/api/jobs/{job['id']}").json()["compare"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert two_stations.post(f"/api/jobs/{job['id']}/busy/1").json()["extra_min"] is not None

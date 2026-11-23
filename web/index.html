@@ -83,6 +83,8 @@
             <div class="field slider">
               <div class="slider-head"><label for="temp">Outside temperature</label><output id="temp-out" for="temp"></output></div>
               <input id="temp" name="temp" type="range" min="-10" max="40" step="1" value="20">
+              <button type="button" id="temp-auto" class="text temp-auto">Use the temperature now at the start</button>
+              <p id="temp-note" class="help" role="status" hidden></p>
             </div>
             <div class="field slider">
               <div class="slider-head"><label for="start-soc">Start charge</label><output id="start-soc-out" for="start-soc"></output></div>
@@ -107,7 +109,27 @@
                   <option value="pareto">Fastest and most efficient roads (slower)</option>
                 </select>
               </div>
+              <div class="field">
+                <label for="speed">Cruise speed</label>
+                <select id="speed" name="speed">
+                  <option value="">Speed limit</option>
+                  <option value="130">At most 130 km/h</option>
+                  <option value="110">At most 110 km/h</option>
+                  <option value="90">At most 90 km/h</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="minkw">Chargers</label>
+                <select id="minkw" name="minkw">
+                  <option value="0">Any power</option>
+                  <option value="22">At least 22 kW</option>
+                  <option value="50">At least 50 kW (fast)</option>
+                  <option value="100">At least 100 kW (ultra-fast)</option>
+                </select>
+              </div>
+              <label class="check"><input type="checkbox" id="known"> Only chargers with published power</label>
               <label class="check"><input type="checkbox" id="elevation" checked> Include climbs and descents</label>
+              <label class="check"><input type="checkbox" id="compare-speeds"> Compare cruise speeds on this trip</label>
               <label class="check"><input type="checkbox" id="compare"> Compare all algorithms on this trip</label>
             </details>
 
@@ -126,6 +148,21 @@
             <div id="s-climb-box" hidden><dt>Net climb</dt><dd id="s-climb" class="num"></dd></div>
             <div id="s-high-box" hidden><dt>Highest point</dt><dd id="s-high" class="num"></dd></div>
           </dl>
+          <figure id="profile-fig" class="profile" hidden>
+            <figcaption>Battery along the route</figcaption>
+            <svg id="profile" viewBox="0 0 360 132" role="img" aria-labelledby="profile-desc"></svg>
+            <p id="profile-desc" class="sr"></p>
+          </figure>
+          <section id="speeds" class="speeds" hidden aria-live="polite">
+            <h3>Cruise speed</h3>
+            <ul id="speed-rows"></ul>
+          </section>
+          <div class="actions">
+            <button type="button" id="copy-link" class="secondary">Copy link</button>
+            <button type="button" id="dl-gpx" class="secondary">GPX</button>
+            <button type="button" id="dl-geojson" class="secondary">GeoJSON</button>
+          </div>
+          <p id="share-out" class="help" role="status" hidden></p>
           <p class="solved"><span id="solved-by"></span> <a id="compare-link" href="#algorithms" hidden>Compare algorithms</a></p>
           <ol id="line" class="line" aria-label="Trip stops"></ol>
           <p class="caveat">An estimate, not a navigation. No traffic. Climbs come from 30 m terrain data, so they are close but not exact. Stations with no published power are estimated or assumed to be 22 kW. <a href="#about">How the model works</a></p>

@@ -307,6 +307,30 @@ button { font: inherit; cursor: pointer; }
 .algo-list dt { margin-top: 24px; font-weight: 600; }
 .algo-list dd { margin: 4px 0 0; max-width: 65ch; color: var(--ink-2); }
 
+/* battery profile, actions, extras */
+.temp-auto { align-self: flex-start; padding: 2px 0; font-size: 0.8125rem; }
+.profile { margin: 0 0 16px; }
+.profile figcaption { margin-bottom: 6px; font-size: 0.75rem; color: var(--ink-2); }
+.profile svg { display: block; width: 100%; height: auto; overflow: visible; }
+.profile .grid { stroke: var(--rule); stroke-width: 1; }
+.profile .tick { fill: var(--ink-2); font: 500 10px var(--font); font-variant-numeric: tabular-nums; }
+.profile .floor { stroke: var(--danger); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+.profile .area { fill: color-mix(in srgb, var(--route) 14%, transparent); }
+.profile .trace { fill: none; stroke: var(--route); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.profile .stopdot { fill: var(--surface); stroke: var(--route); stroke-width: 2; }
+.profile .stopnum { fill: var(--ink); font: 650 10px var(--font); }
+.speeds { margin: 0 0 16px; padding: 14px 16px; border-radius: 14px; background: var(--raised); }
+.speeds h3 { margin: 0 0 6px; font-size: 0.8125rem; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.speeds ul { margin: 0; padding: 0; list-style: none; font-size: 0.875rem; }
+.speeds li + li { margin-top: 4px; }
+.actions { display: flex; gap: 8px; margin: 0 0 10px; }
+.actions .secondary { flex: 1; height: 36px; padding: 0 12px; font-size: 0.8125rem; }
+.busy { padding: 0; margin-top: 2px; font-size: 0.8125rem; }
+.busy-out { display: block; font-size: 0.8125rem; color: var(--ink-2); }
+.busy-out:empty { display: none; }
+.line li .busy, .line li .busy-out { margin-left: 0; }
+#share-out { margin: 0 0 12px; word-break: break-all; }
+
 /* narrow screens: form, map and result stack */
 @media (max-width: 900px) {
   body { grid-template-rows: auto minmax(0, 1fr); }
