@@ -29,6 +29,7 @@ ALGORITHM_INFO = {
 }  # fmt: skip
 Leg = namedtuple("Leg", "time_s kwh meters path")
 MAX_GRADE = 0.12  # highest plausible average grade on a stretch between two junctions
+TABLE_VERSION = 1  # bump when the energy or charging model changes: saved legs tables become stale
 GOAL = (-1, -1, False)  # terminal state: goal reached with any charge
 
 
@@ -208,6 +209,7 @@ class Planner:
         G = self.G
         total = round(sum(d["travel_time"] + d["length"] for *_, d in G.edges(data=True)), 3)
         spec = (
+            TABLE_VERSION,
             len(G),
             G.number_of_edges(),
             total,
